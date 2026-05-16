@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap");
 
 /* ─────────────────────────────────────────
    DESIGN TOKENS
@@ -30,7 +30,7 @@
   --radius-md: 16px;
   --radius-lg: 24px;
   --radius-xl: 32px;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: "Nunito", ui-rounded, ui-sans-serif, system-ui, sans-serif;
   color: var(--text);
   background: var(--bg);
   font-synthesis: none;
@@ -768,7 +768,7 @@ select.f-input { cursor: pointer; }
 .login-mark { width: 72px; height: 72px; margin: 0 auto 18px; display: grid; place-items: center; position: relative; color: #fff; }
 .login-mark span { position: absolute; inset: 0; border-radius: 24px 36px 26px 34px; background: linear-gradient(135deg, #e8809a, #2c2c3a); transform: rotate(-8deg); box-shadow: 0 18px 34px rgba(232,128,154,.28); }
 .login-mark svg { width: 30px; height: 30px; position: relative; }
-.login-title { font-family: "Cormorant Garamond", Georgia, serif; font-size: clamp(60px, 20vw, 84px); line-height: .82; font-weight: 700; color: var(--text); }
+.login-title { font-family: "Nunito", ui-rounded, sans-serif; font-size: clamp(52px, 18vw, 76px); line-height: .88; font-weight: 800; color: var(--text); }
 .login-sub { color: var(--muted); margin: 16px 0 28px; font-size: 15px; letter-spacing: .04em; }
 
 /* ─────────────────────────────────────────
@@ -886,7 +886,7 @@ select.f-input { cursor: pointer; }
   50% { transform: scale(1.22); }
 }
 .loading-title {
-  font-family: "Cormorant Garamond", Georgia, serif;
+  font-family: "Nunito", ui-rounded, sans-serif;
   font-size: 38px; font-weight: 700;
   color: var(--text);
   letter-spacing: -.02em;
