@@ -58,6 +58,7 @@ export const MY_HOLIDAYS = [
   { date: "2027-02-24", name: "古兰经降临日 · Nuzul Al-Quran" },
   { date: "2027-03-10", name: "开斋节 · Hari Raya Aidilfitri" },
   { date: "2027-03-11", name: "开斋节第二天 · Hari Raya Day 2" },
+  { date: "2027-05-01", name: "劳动节 · Labour Day" },
   { date: "2027-05-17", name: "宰牲节 · Hari Raya Haji" },
   { date: "2027-05-20", name: "卫塞节 · Wesak Day" },
   { date: "2027-06-06", name: "伊斯兰新年 · Awal Muharram" },
@@ -72,6 +73,7 @@ export const MY_HOLIDAYS = [
   { date: "2027-12-25", name: "圣诞节 · Christmas Day" },
 
   // ===== 2028 =====
+  { date: "2028-01-01", name: "元旦 · New Year's Day" },
   { date: "2028-01-26", name: "农历新年 · Chinese New Year" },
   { date: "2028-01-27", name: "农历新年第二天 · CNY Day 2" },
   { date: "2028-02-09", name: "大宝森节 · Thaipusam" },

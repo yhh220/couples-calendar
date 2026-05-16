@@ -6,7 +6,7 @@ import {
   Edit2, BookOpen, WifiOff, GraduationCap, ChevronDown, ChevronUp, Trash2,
 } from "lucide-react";
 import { auth, provider, db, storage } from "./firebase";
-import { signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from "firebase/auth";
+import { signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from "firebase/auth";
 import {
   collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy,
   setDoc, getDoc, updateDoc, serverTimestamp,
@@ -31,7 +31,6 @@ const MONTH_NAMES = ["一月","二月","三月","四月","五月","六月","七�
 const MIN_YEAR = 2024, MAX_YEAR = 2032;
 
 const DEFAULT_ANNUAL_EVENTS = [
-  { id: "annual-anniversary-0101", title: "在一起纪念日", date: "2025-01-01", type: "anniversary", owner: null, repeat: true, allDay: true, note: "" },
   { id: "annual-birthday-him-0202", title: "YH 生日 🎂", date: "2025-02-02", type: "anniversary", owner: "him", repeat: true, allDay: true, note: "" },
   { id: "annual-birthday-sy-1026", title: "SY 生日 🎂", date: "2025-10-26", type: "anniversary", owner: "her", repeat: true, allDay: true, note: "" },
 ];
@@ -78,6 +77,13 @@ function safeImageSrc(src) {
   if (/^https:\/\/firebasestorage\.googleapis\.com\//i.test(src)) return src;
   if (/^https:\/\/storage\.googleapis\.com\//i.test(src)) return src;
   return null;
+}
+
+function storagePathFromUrl(url) {
+  try {
+    const match = decodeURIComponent(new URL(url).pathname).match(/\/o\/(.+)$/);
+    return match ? match[1] : null;
+  } catch { return null; }
 }
 
 function toDs(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
@@ -214,17 +220,21 @@ function normalizeSchoolInput(data) {
 // ERROR BOUNDARY
 // ─────────────────────────────────────────
 class AppErrorBoundary extends Component {
-  constructor(props) { super(props); this.state = { hasError: false }; }
-  static getDerivedStateFromError() { return { hasError: true }; }
-  componentDidCatch(err) { console.error(err); }
+  constructor(props) { super(props); this.state = { hasError: false, error: null }; }
+  static getDerivedStateFromError(err) { return { hasError: true, error: err }; }
+  componentDidCatch(err) { console.error("[AppErrorBoundary]", err); }
   reset = () => { storageRemove("events"); storageRemove("schoolEvents"); window.location.reload(); };
   render() {
     if (this.state.hasError) return (
-      <div className="crash-screen"><div className="crash-card">
-        <div className="modal-title">页面需要刷新</div>
-        <p>本地缓存有旧数据，清理后重新进入。</p>
-        <button className="btn-submit" onClick={this.reset}>清理并重开</button>
-      </div></div>
+      <div className="crash-screen">
+        <div className="crash-card">
+          <div className="crash-emoji">💔</div>
+          <div className="crash-title">出了点问题</div>
+          <p className="crash-sub">页面遇到了错误。清理本地缓存后重试，若问题持续请刷新浏览器。</p>
+          <button className="btn-submit" onClick={this.reset}>清理缓存并重启</button>
+          <button className="pbtn" style={{width:"100%",marginTop:8}} onClick={() => window.location.reload()}>只刷新页面</button>
+        </div>
+      </div>
     );
     return this.props.children;
   }
@@ -265,8 +275,20 @@ function OfflineBanner() {
 }
 
 // ─────────────────────────────────────────
-// AUTH SCREENS
+// LOADING / AUTH SCREENS
 // ─────────────────────────────────────────
+function LoadingScreen() {
+  return (
+    <div className="loading-screen">
+      <div className="loading-card">
+        <div className="loading-heart"><Heart size={36} fill="currentColor" /></div>
+        <div className="loading-title">Calendar</div>
+        <div className="loading-dots"><span /><span /><span /></div>
+      </div>
+    </div>
+  );
+}
+
 function LoginScreen({ onLogin }) {
   return (
     <div className="login-screen">
@@ -287,9 +309,23 @@ function NoPermissionScreen({ onLogout }) {
       <div className="login-aura login-aura-one" /><div className="login-aura login-aura-two" />
       <div className="login-card">
         <div className="login-mark"><span /><Heart size={20} fill="currentColor" /></div>
-        <div style={{fontSize:28,fontWeight:700,color:"#2c2c3a",margin:"8px 0 10px"}}>No Permission</div>
-        <div className="login-sub" style={{marginBottom:24}}>This account is not authorized.</div>
-        <button className="btn-google" onClick={onLogout}>Exit</button>
+        <div style={{fontSize:26,fontWeight:900,margin:"8px 0 8px"}}>No Permission</div>
+        <div className="login-sub" style={{marginBottom:24}}>This account is not authorized to access this calendar.</div>
+        <button className="btn-google" onClick={onLogout}>Sign out</button>
+      </div>
+    </div>
+  );
+}
+
+function MaintenanceScreen() {
+  return (
+    <div className="loading-screen">
+      <div className="loading-card">
+        <div className="loading-heart" style={{fontSize:36}}>🔧</div>
+        <div className="loading-title">维护中</div>
+        <p style={{color:"var(--muted)",fontSize:13,textAlign:"center",margin:"4px 0 0",lineHeight:1.6}}>
+          我们正在更新日历<br />请稍后再回来
+        </p>
       </div>
     </div>
   );
@@ -435,7 +471,7 @@ function Calendar({ curDate, events, selDate, onSelectDay, onChangeMonth, onJump
     const allEvts = getEventsForDs(s, events);
     const evts = allEvts.filter(e => {
       if (viewMode === "mine") {
-        if (e.type === "holiday" || e.source === "school") return true;
+        if (e.type === "holiday" || e.type === "together" || e.type === "anniversary" || e.source === "school") return true;
         return e.owner === ME || e.ownerEmail === user?.email;
       }
       if (e.private && e.ownerEmail !== user?.email) return false;
@@ -540,7 +576,7 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
 
   const filterForView = evList => evList.filter(e => {
     if (viewMode === "mine") {
-      if (e.type === "holiday" || e.source === "school") return true;
+      if (e.type === "holiday" || e.type === "together" || e.type === "anniversary" || e.source === "school") return true;
       return e.owner === ME || e.ownerEmail === user?.email;
     }
     if (e.private && e.ownerEmail !== user?.email) return false;
@@ -573,16 +609,26 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
   const typeCount = type => monthEvts.filter(e => e.type === type).length;
   const today = todayDs();
   const upcoming = monthEvts.map(e => {
-    if (!e.repeat) return e;
-    const [,em,ed] = e.date.split("-").map(Number);
-    return { ...e, date: `${y}-${String(em).padStart(2,'0')}-${String(ed).padStart(2,'0')}` };
-  }).filter(e => (e.endDate || e.date) >= today && e.type !== "holiday").sort((a,b) => a.date.localeCompare(b.date))[0];
+    // yearly-repeat birthday/anniversary: project to current year
+    if (e.repeat) {
+      const [,em,ed] = e.date.split("-").map(Number);
+      return { ...e, date: `${y}-${String(em).padStart(2,'0')}-${String(ed).padStart(2,'0')}` };
+    }
+    // custom recurrence: find first instance in this month that's >= today
+    if (e.recurrence?.type && e.recurrence.type !== "none") {
+      const instances = expandRecurring(e, y, m).filter(d => d >= today).sort();
+      if (instances.length) return { ...e, date: instances[0] };
+      if (e.date >= monthStart && e.date <= monthEnd && e.date >= today) return e;
+      return null;
+    }
+    return e;
+  }).filter(Boolean).filter(e => (e.endDate || e.date) >= today && e.type !== "holiday").sort((a,b) => a.date.localeCompare(b.date))[0];
 
   const canEdit = e => !e.locked && (e.ownerEmail === user?.email || e.type === "together" || e.type === "anniversary");
-  const canDelete = e => !e.locked;
+  const canDelete = e => !e.locked && (e.ownerEmail === user?.email || e.type === "together" || e.type === "anniversary");
   const ownerLabel = e => {
     if (!e.ownerEmail) return null;
-    return e.ownerEmail === HIM_EMAIL ? "你" : "她";
+    return e.ownerEmail === user?.email ? "你" : (e.ownerEmail === HIM_EMAIL ? "他" : "她");
   };
 
   const statsRows = [
@@ -637,10 +683,12 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
                   )}
                 </div>
                 {photoSrc && <img className="ev-photo" src={photoSrc} alt="" onClick={() => onPhotoClick(photoSrc)} />}
-                <div className="ev-actions">
-                  {canEdit(e) && <button className="ev-action-btn" onClick={() => onEdit(e)} title="编辑"><Edit2 size={13} /></button>}
-                  {canDelete(e) && <button className="ev-action-btn del" onClick={() => onDelete(e)} title="删除"><Trash2 size={13} /></button>}
-                </div>
+                {(canEdit(e) || canDelete(e)) && (
+                  <div className="ev-actions">
+                    {canEdit(e) && <button className="ev-action-btn" onClick={() => onEdit(e)} title="编辑"><Edit2 size={13} /></button>}
+                    {canDelete(e) && <button className="ev-action-btn del" onClick={() => onDelete(e)} title="删除"><Trash2 size={13} /></button>}
+                  </div>
+                )}
                 {isExpanded && !e.locked && !e.private && e.id && (
                   <div className="ev-expanded" onClick={ev => ev.stopPropagation()}>
                     <CommentsSection eventId={e.id} />
@@ -724,6 +772,7 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit })
   const [recWeekdays, setRecWeekdays] = useState([0,1,2,3,4,5,6]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [photoCleared, setPhotoCleared] = useState(false);
   const fileRef = useRef();
 
   useEffect(() => {
@@ -739,6 +788,7 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit })
       setNote(initEdit.note || "");
       setPhotoPreview(safeImageSrc(initEdit.photo));
       setPhoto(null);
+      setPhotoCleared(false);
       setIsPrivate(Boolean(initEdit.private));
       const rec = initEdit.recurrence;
       setRecType(rec?.type || "none");
@@ -753,7 +803,7 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit })
   const resetForm = () => {
     setTitle(""); setType("work"); setTime(""); setNote(""); setEndDate("");
     setAllDay(false); setRepeat(false); setPhoto(null); setPhotoPreview(null);
-    setError(""); setIsPrivate(false);
+    setError(""); setIsPrivate(false); setPhotoCleared(false);
     setRecType("none"); setRecEnd(""); setRecWeekdays([0,1,2,3,4,5,6]);
   };
 
@@ -780,7 +830,20 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit })
     setLoading(true); setError("");
     try {
       let photoUrl = initEdit?.photo || null;
+      if (photoCleared && photoUrl) {
+        try {
+          const oldPath = storagePathFromUrl(photoUrl);
+          if (oldPath) await deleteObject(ref(storage, oldPath));
+        } catch { /* ignore cleanup failure */ }
+        photoUrl = null;
+      }
       if (photo) {
+        if (photoUrl) {
+          try {
+            const oldPath = storagePathFromUrl(photoUrl);
+            if (oldPath) await deleteObject(ref(storage, oldPath));
+          } catch { /* ignore cleanup failure */ }
+        }
         const storageRef = ref(storage, `photos/${Date.now()}_${user?.uid}`);
         await uploadString(storageRef, photo, "data_url");
         photoUrl = await getDownloadURL(storageRef);
@@ -820,115 +883,151 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit })
 
   if (!open) return null;
   const isShared = type === "together" || type === "anniversary";
+  const TYPE_ACCENT = { work:"var(--him)", assign:"var(--assign)", social:"var(--social)", together:"var(--together)", anniversary:"var(--anniversary)", exam:"var(--exam)" };
   const typeList = [
-    { key:"work", label:"工作", icon:<Briefcase size={15} /> },
-    { key:"assign", label:"Assignment", icon:<FileText size={15} /> },
-    { key:"social", label:"社交", icon:<Users size={15} /> },
-    { key:"together", label:"约会 / 两人", icon:<Heart size={16} /> },
-    { key:"anniversary", label:"纪念日", icon:<Star size={15} /> },
-    { key:"exam", label:"考试", icon:<GraduationCap size={15} /> },
+    { key:"work",        label:"工作",      icon:<Briefcase size={17} /> },
+    { key:"assign",      label:"Assignment", icon:<FileText size={17} /> },
+    { key:"social",      label:"社交",      icon:<Users size={17} /> },
+    { key:"together",    label:"约会",      icon:<Heart size={17} /> },
+    { key:"anniversary", label:"纪念日",    icon:<Star size={17} /> },
+    { key:"exam",        label:"考试",      icon:<GraduationCap size={17} /> },
   ];
 
   return (
     <div className="overlay open" onClick={e => { if (e.target.classList.contains("overlay")) { resetForm(); onClose(); } }}>
-      <div className="modal">
+      <div className="modal" style={{"--modal-accent": TYPE_ACCENT[type] || "var(--together)"}}>
         <div className="modal-handle" />
+        <div className="modal-accent-bar" />
         <div className="modal-hdr">
-          <div className="modal-title">{isEdit ? "编辑活动" : "添加活动"}</div>
+          <div><div className="modal-title">{isEdit ? "编辑活动" : "添加活动"}</div></div>
           <button className="modal-close" onClick={() => { resetForm(); onClose(); }}><X size={16} /></button>
         </div>
+
+        {/* ── 活动名称 ── */}
         <div className="f-group">
           <label className="f-label">活动名称</label>
           <input className="f-input" type="text" placeholder="例：期末考试、晚餐约会..."
             maxLength={LIMITS.title} value={title} onChange={e => setTitle(e.target.value)}
             onKeyDown={e => e.key === "Enter" && handleSubmit()} autoFocus />
         </div>
+
+        {/* ── 类型选择 ── */}
         <div className="f-group">
           <label className="f-label">类型</label>
-          <div className="type-pills">
+          <div className="type-grid">
             {typeList.map(t => (
-              <button key={t.key} className={`type-pill${type === t.key ? ` active ${t.key}` : ""}`}
-                onClick={() => { setType(t.key); if (t.key !== "anniversary") setRepeat(false); if (isShared) setIsPrivate(false); }}>
-                {t.icon} {t.label}
+              <button key={t.key}
+                className={`type-card${type === t.key ? ` active ${t.key}` : ""}`}
+                onClick={() => {
+                  setType(t.key);
+                  if (t.key !== "anniversary") setRepeat(false);
+                  if (t.key === "together" || t.key === "anniversary") setIsPrivate(false);
+                }}>
+                <span className="type-card-icon">{t.icon}</span>
+                <span className="type-card-label">{t.label}</span>
               </button>
             ))}
           </div>
         </div>
-        <div className="f-row">
-          <div className="f-group" style={{marginBottom:0}}>
-            <label className="f-label">开始日期</label>
-            <input className="f-input" type="date" value={date} onChange={e => setDate(e.target.value)} />
-          </div>
-          <div className="f-group" style={{marginBottom:0}}>
-            <label className="f-label">结束日期（选填）</label>
-            <input className="f-input" type="date" value={endDate} min={date} onChange={e => setEndDate(e.target.value)} />
-          </div>
-        </div>
-        {!endDate && (
-          <div className="f-row" style={{marginTop:12}}>
-            <div className="f-group" style={{marginBottom:0,opacity:allDay?.35:1,pointerEvents:allDay?"none":"all"}}>
-              <label className="f-label">时间（选填）</label>
-              <input className="f-input" type="time" value={time} onChange={e => setTime(e.target.value)} />
+
+        {/* ── 时间 ── */}
+        <div className="f-section">
+          <div className="f-section-label">时间</div>
+          <div className="f-row">
+            <div className="f-group" style={{marginBottom:0}}>
+              <label className="f-label">开始日期</label>
+              <input className="f-input" type="date" value={date} onChange={e => setDate(e.target.value)} />
             </div>
-            <div className="f-group" style={{marginBottom:0,display:"flex",alignItems:"flex-end"}}>
-              <div className="toggle-row">
-                <button className={`toggle${allDay?" on":""}`} onClick={() => setAllDay(!allDay)} />
-                <span className="toggle-lbl">全天活动</span>
+            <div className="f-group" style={{marginBottom:0}}>
+              <label className="f-label">结束日期（选填）</label>
+              <input className="f-input" type="date" value={endDate} min={date} onChange={e => setEndDate(e.target.value)} />
+            </div>
+          </div>
+          {!endDate && (
+            <div className="f-row" style={{marginTop:12}}>
+              <div className="f-group" style={{marginBottom:0,opacity:allDay?.35:1,pointerEvents:allDay?"none":"all"}}>
+                <label className="f-label">时间（选填）</label>
+                <input className="f-input" type="time" value={time} onChange={e => setTime(e.target.value)} />
+              </div>
+              <div className="f-group" style={{marginBottom:0,display:"flex",alignItems:"flex-end"}}>
+                <div className="toggle-row">
+                  <button className={`toggle${allDay?" on":""}`} onClick={() => setAllDay(!allDay)} />
+                  <span className="toggle-lbl">全天活动</span>
+                </div>
               </div>
             </div>
-          </div>
-        )}
-        {type === "anniversary" && (
-          <div className="f-group"><div className="toggle-row">
-            <button className={`toggle${repeat?" on":""}`} onClick={() => setRepeat(!repeat)} />
-            <span className="toggle-lbl">每年重复</span>
-          </div></div>
-        )}
-        <div className="f-group">
-          <label className="f-label">重复</label>
-          <select className="f-input" value={recType} onChange={e => setRecType(e.target.value)}>
-            <option value="none">不重复</option>
-            <option value="daily">每天</option>
-            <option value="weekly">每周</option>
-            <option value="monthly">每月同一天</option>
-            <option value="yearly">每年同一天</option>
-            <option value="custom">自定义范围</option>
-          </select>
+          )}
         </div>
-        {recType !== "none" && (
-          <div className="f-group">
-            <label className="f-label">重复结束日期（选填）</label>
-            <input className="f-input" type="date" value={recEnd} min={date} onChange={e => setRecEnd(e.target.value)} />
+
+        {/* ── 重复设置 ── */}
+        <div className="f-section">
+          <div className="f-section-label">重复</div>
+          {type === "anniversary" && (
+            <div className="f-group"><div className="toggle-row">
+              <button className={`toggle${repeat?" on":""}`} onClick={() => setRepeat(!repeat)} />
+              <span className="toggle-lbl">每年自动重复</span>
+            </div></div>
+          )}
+          <div className="f-group" style={{marginBottom: recType === "none" ? 0 : 14}}>
+            <label className="f-label">重复周期</label>
+            <select className="f-input" value={recType} onChange={e => setRecType(e.target.value)}>
+              <option value="none">不重复</option>
+              <option value="daily">每天</option>
+              <option value="weekly">每周</option>
+              <option value="monthly">每月同一天</option>
+              <option value="yearly">每年同一天</option>
+              <option value="custom">自定义（选星期）</option>
+            </select>
           </div>
-        )}
-        {(recType === "weekly" || recType === "custom") && (
+          {recType !== "none" && (
+            <div className="f-group">
+              <label className="f-label">重复截止日期（选填）</label>
+              <input className="f-input" type="date" value={recEnd} min={date} onChange={e => setRecEnd(e.target.value)} />
+            </div>
+          )}
+          {(recType === "weekly" || recType === "custom") && (
+            <div className="f-group" style={{marginBottom:0}}>
+              <label className="f-label">重复的星期</label>
+              <div className="weekday-pills">
+                {["日","一","二","三","四","五","六"].map((d, i) => (
+                  <button key={i} className={`weekday-pill${recWeekdays.includes(i) ? " active" : ""}`} onClick={() => toggleWeekday(i)}>{d}</button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── 其他选项 ── */}
+        <div className="f-section">
+          <div className="f-section-label">其他</div>
+          {!isShared && (
+            <div className="f-group"><div className="toggle-row">
+              <button className={`toggle${isPrivate?" on":""}`} onClick={() => setIsPrivate(!isPrivate)} />
+              <span className="toggle-lbl">🔒 私密（只有我能看到）</span>
+            </div></div>
+          )}
           <div className="f-group">
-            <label className="f-label">星期</label>
-            <div className="weekday-pills">
-              {["日","一","二","三","四","五","六"].map((d, i) => (
-                <button key={i} className={`weekday-pill${recWeekdays.includes(i) ? " active" : ""}`} onClick={() => toggleWeekday(i)}>{d}</button>
-              ))}
+            <label className="f-label">备注（选填）</label>
+            <input className="f-input" type="text" placeholder="地点、提醒..." maxLength={LIMITS.note} value={note} onChange={e => setNote(e.target.value)} />
+          </div>
+          <div className="f-group" style={{marginBottom:0}}>
+            <label className="f-label">照片（选填）</label>
+            <div className="photo-upload-area" onClick={() => !photoPreview && fileRef.current?.click()}>
+              <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handlePhoto} />
+              {photoPreview ? (
+                <div style={{position:"relative",display:"inline-block",width:"100%"}}>
+                  <img className="photo-preview-img" src={photoPreview} alt="" onClick={() => fileRef.current?.click()} />
+                  <button
+                    style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,.55)",border:"none",borderRadius:"50%",width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#fff",flexShrink:0}}
+                    onClick={e => { e.stopPropagation(); setPhoto(null); setPhotoPreview(null); setPhotoCleared(true); }}
+                    title="移除照片"
+                  ><X size={12} /></button>
+                </div>
+              ) : <div className="photo-placeholder"><ImageIcon size={22} /><span>点击上传照片</span></div>}
             </div>
           </div>
-        )}
-        {!isShared && (
-          <div className="f-group"><div className="toggle-row">
-            <button className={`toggle${isPrivate?" on":""}`} onClick={() => setIsPrivate(!isPrivate)} />
-            <span className="toggle-lbl">🔒 私密（只有我自己看得到）</span>
-          </div></div>
-        )}
-        <div className="f-group">
-          <label className="f-label">备注（选填）</label>
-          <input className="f-input" type="text" placeholder="地点、提醒..." maxLength={LIMITS.note} value={note} onChange={e => setNote(e.target.value)} />
         </div>
-        <div className="f-group">
-          <label className="f-label">照片（选填）</label>
-          <div className="photo-upload-area" onClick={() => fileRef.current?.click()}>
-            <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handlePhoto} />
-            {photoPreview ? <img className="photo-preview-img" src={photoPreview} alt="" />
-              : <div className="photo-placeholder"><ImageIcon size={22} /><span>点击上传照片</span></div>}
-          </div>
-        </div>
+
         {error && <div className="form-error">{error}</div>}
         <button className="btn-submit" onClick={handleSubmit} disabled={loading}>
           <Check size={16} /> {loading ? (isEdit ? "保存中..." : "添加中...") : (isEdit ? "保存更改" : "确认添加")}
@@ -1048,7 +1147,30 @@ function DiaryModal({ onClose }) {
   const [color, setColor] = useState("#2c2c3a");
   const [history, setHistory] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [loadingDiary, setLoadingDiary] = useState(true);
   const COLORS = ["#2c2c3a","#e8809a","#5488e8","#23a071","#c38321","#dd4f68","#7b61ff"];
+
+  useEffect(() => {
+    if (!user) { setLoadingDiary(false); return; }
+    const month = toDs(new Date()).slice(0, 7);
+    getDoc(doc(db, "pencil", `${user.uid}-${month}`)).then(snap => {
+      if (snap.exists() && snap.data().imageUrl) {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          const canvas = canvasRef.current;
+          if (!canvas) return;
+          canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+          setHistory([canvas.toDataURL()]);
+          setLoadingDiary(false);
+        };
+        img.onerror = () => setLoadingDiary(false);
+        img.src = snap.data().imageUrl;
+      } else {
+        setLoadingDiary(false);
+      }
+    }).catch(() => setLoadingDiary(false));
+  }, [user]);
 
   const getPos = e => {
     const rect = canvasRef.current.getBoundingClientRect();
@@ -1138,9 +1260,16 @@ function DiaryModal({ onClose }) {
           <button className="pbtn" style={{minHeight:34,padding:"0 12px"}} onClick={undo} disabled={history.length===0}>撤销</button>
           <button className="pbtn primary" style={{minHeight:34,padding:"0 12px"}} onClick={saveDiary} disabled={saving}>{saving?"保存中...":"保存"}</button>
         </div>
-        <canvas ref={canvasRef} width={680} height={460} className="diary-canvas"
-          onPointerDown={startDraw} onPointerMove={draw} onPointerUp={endDraw} onPointerLeave={endDraw}
-          style={{touchAction:"none"}} />
+        <div style={{position:"relative"}}>
+          {loadingDiary && (
+            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"var(--card)",zIndex:2,borderRadius:"0 0 20px 20px",pointerEvents:"none"}}>
+              <span style={{color:"var(--muted)",fontSize:13}}>加载日记中...</span>
+            </div>
+          )}
+          <canvas ref={canvasRef} width={680} height={460} className="diary-canvas"
+            onPointerDown={startDraw} onPointerMove={draw} onPointerUp={endDraw} onPointerLeave={endDraw}
+            style={{touchAction:"none",opacity:loadingDiary?0:1}} />
+        </div>
       </div>
     </div>
   );
@@ -1305,50 +1434,71 @@ function SchoolCalendarModal({ open, onClose, events, onAdd, onImport, onDelete 
       <div className="modal school-modal">
         <div className="modal-handle" />
         <div className="modal-hdr">
-          <div><div className="modal-title">学校日历</div><div className="modal-sub">INTI / 学期关键日期</div></div>
+          <div>
+            <div className="modal-title">学校日历</div>
+            <div className="modal-sub">INTI · 学期关键日期管理</div>
+          </div>
           <button className="modal-close" onClick={onClose}><X size={16} /></button>
         </div>
-        <div className="school-panel">
-          <div className="school-panel-title">添加学校事件</div>
-          <div className="f-group">
-            <label className="f-label">标题</label>
-            <input className="f-input" maxLength={LIMITS.title} value={title} onChange={e => setTitle(e.target.value)} placeholder="例：Quiz 1 / Midterm" />
-          </div>
-          <div className="f-row">
-            <div className="f-group"><label className="f-label">开始日期</label><input className="f-input" type="date" value={date} onChange={e => setDate(e.target.value)} /></div>
-            <div className="f-group"><label className="f-label">结束日期</label><input className="f-input" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></div>
-          </div>
-          <div className="f-row">
-            <div className="f-group">
-              <label className="f-label">学校分类</label>
-              <select className="f-input" value={schoolType} onChange={e => setSchoolType(e.target.value)}>
-                {schoolTypes.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
-              </select>
-            </div>
-            <div className="f-group">
-              <label className="f-label">颜色类型</label>
-              <select className="f-input" value={evType} onChange={e => setEvType(e.target.value)}>
-                {evTypes.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
-              </select>
-            </div>
-          </div>
-          {error && <div className="form-error">{error}</div>}
-          <button className="btn-submit school-submit" onClick={submitOne} disabled={loading}><Plus size={16} /> 添加</button>
-        </div>
 
-        <div className="school-panel">
-          <div className="school-panel-title">已添加</div>
-          <div className="school-list">
-            {events.length === 0 && <div className="empty-state" style={{padding:"16px 0"}}>还没有自定义学校事件</div>}
-            {events.map(e => (
-              <div className="school-row" key={e.id}>
-                <div>
-                  <div className="school-row-title">{e.title}</div>
-                  <div className="ev-meta">{e.date}{e.endDate ? ` - ${e.endDate}` : ""}</div>
-                </div>
-                <button className="ev-del" onClick={() => onDelete(e)}><X size={14} /></button>
+        <div className="school-modal-body">
+          {/* Left: Add form */}
+          <div className="school-panel">
+            <div className="school-panel-title">➕ 添加事件</div>
+            <div className="f-group">
+              <label className="f-label">标题</label>
+              <input className="f-input" maxLength={LIMITS.title} value={title}
+                onChange={e => setTitle(e.target.value)}
+                placeholder="例：Quiz 1、Midterm..."
+                onKeyDown={e => e.key === "Enter" && submitOne()} autoFocus />
+            </div>
+            <div className="f-group">
+              <label className="f-label">开始日期</label>
+              <input className="f-input" type="date" value={date} onChange={e => setDate(e.target.value)} />
+            </div>
+            <div className="f-group">
+              <label className="f-label">结束日期（选填）</label>
+              <input className="f-input" type="date" value={endDate} min={date} onChange={e => setEndDate(e.target.value)} />
+            </div>
+            <div className="f-row">
+              <div className="f-group" style={{marginBottom:0}}>
+                <label className="f-label">学校分类</label>
+                <select className="f-input" value={schoolType} onChange={e => setSchoolType(e.target.value)}>
+                  {schoolTypes.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+                </select>
               </div>
-            ))}
+              <div className="f-group" style={{marginBottom:0}}>
+                <label className="f-label">颜色</label>
+                <select className="f-input" value={evType} onChange={e => setEvType(e.target.value)}>
+                  {evTypes.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+                </select>
+              </div>
+            </div>
+            {error && <div className="form-error" style={{marginTop:10}}>{error}</div>}
+            <button className="btn-submit school-submit" style={{marginTop:14}} onClick={submitOne} disabled={loading}>
+              <Plus size={16} /> {loading ? "添加中..." : "确认添加"}
+            </button>
+          </div>
+
+          {/* Right: Events list */}
+          <div className="school-panel">
+            <div className="school-panel-title">📋 已有事件 ({events.length})</div>
+            <div className="school-list">
+              {events.length === 0 && (
+                <div className="empty-state" style={{padding:"20px 0"}}>
+                  <p style={{margin:0,fontSize:13}}>还没有自定义事件<br/><span style={{fontSize:11,opacity:.6}}>在左侧添加第一个</span></p>
+                </div>
+              )}
+              {events.map(e => (
+                <div className="school-row" key={e.id}>
+                  <div style={{minWidth:0}}>
+                    <div className="school-row-title">{e.title}</div>
+                    <div className="ev-meta">{e.date}{e.endDate ? ` – ${e.endDate}` : ""}{e.locked ? " · 默认" : ""}</div>
+                  </div>
+                  {!e.locked && <button className="ev-del" onClick={() => onDelete(e)}><X size={13} /></button>}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -1388,7 +1538,9 @@ function AppContent() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const detailRef = useRef();
   const [anniversaryDate, setAnniversaryDate] = useState("2025-01-01");
+  const [maintenance, setMaintenance] = useState(false);
 
   const ME = user?.email === HIM_EMAIL ? "him" : "her";
   const PARTNER = ME === "him" ? "her" : "him";
@@ -1413,24 +1565,49 @@ function AppContent() {
   useEffect(() => {
     if (!user) return;
     const q = query(collection(db, "events"), orderBy("date"));
-    return onSnapshot(q, snap => setEvents(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+    let unsub;
+    const subscribe = () => {
+      unsub = onSnapshot(q,
+        snap => setEvents(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+        err => { console.error("events listener error:", err); setTimeout(subscribe, 3000); }
+      );
+    };
+    subscribe();
+    return () => unsub?.();
   }, [user]);
 
   useEffect(() => {
     if (!user) return;
     const q = query(collection(db, "school_events"), orderBy("date"));
-    return onSnapshot(q, snap => setSchoolEvents(snap.docs.map(d => ({ id: d.id, ...d.data(), source: "school" }))));
+    let unsub;
+    const subscribe = () => {
+      unsub = onSnapshot(q,
+        snap => setSchoolEvents(snap.docs.map(d => ({ id: d.id, ...d.data(), source: "school" }))),
+        err => { console.error("school_events listener error:", err); setTimeout(subscribe, 3000); }
+      );
+    };
+    subscribe();
+    return () => unsub?.();
   }, [user]);
 
-  // Listen to couple/shared for anniversary date
+  // Listen to couple/shared for anniversary date and maintenance flag
   useEffect(() => {
-    if (!user) return;
-    return onSnapshot(doc(db, "couple", "shared"), snap => {
-      if (snap.exists() && snap.data().anniversaryDate) {
-        setAnniversaryDate(snap.data().anniversaryDate);
+    // Check maintenance mode even before login
+    const unsub = onSnapshot(doc(db, "couple", "shared"), snap => {
+      if (snap.exists()) {
+        setMaintenance(!!snap.data().maintenance);
+        if (snap.data().anniversaryDate) setAnniversaryDate(snap.data().anniversaryDate);
       }
     });
-  }, [user]);
+    return unsub;
+  }, []);
+
+  // Auto-scroll to event detail on mobile when a date is selected
+  useEffect(() => {
+    if (!selDate || !detailRef.current || window.innerWidth >= 900) return;
+    const t = setTimeout(() => detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
+    return () => clearTimeout(t);
+  }, [selDate]);
 
   // Bootstrap defaults on first login
   useEffect(() => {
@@ -1459,7 +1636,16 @@ function AppContent() {
   }, [user]);
 
   const handleLogin = async () => {
-    try { await signInWithRedirect(auth, provider); } catch (e) { console.error(e); }
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (e) {
+      // Popup blocked (e.g. some mobile browsers) — fall back to redirect
+      if (e.code === "auth/popup-blocked" || e.code === "auth/popup-closed-by-user") {
+        try { await signInWithRedirect(auth, provider); } catch { /* ignore */ }
+      } else {
+        console.error(e);
+      }
+    }
   };
 
   const handleLogout = async () => {
@@ -1499,8 +1685,8 @@ function AppContent() {
     // Delete entire event (single or "all")
     if (event.photo) {
       try {
-        const photoRef = ref(storage, event.photo);
-        await deleteObject(photoRef);
+        const path = storagePathFromUrl(event.photo);
+        if (path) await deleteObject(ref(storage, path));
       } catch { /* ignore storage cleanup failures */ }
     }
     try { await deleteDoc(doc(db, "events", event.id)); } catch (e) { console.error(e); }
@@ -1529,11 +1715,24 @@ function AppContent() {
   const todayStr = `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 星期${dayNames[now.getDay()]}`;
   const schoolById = new Map([...DEFAULT_SCHOOL_EVENTS, ...schoolEvents].map(ev => [ev.id, ev]));
   const allSchoolEvents = Array.from(schoolById.values());
-  const allEvents = [...events, ...allSchoolEvents];
+  // Anniversary event is derived from Firestore anniversaryDate so it always reflects the correct date.
+  // Filter out the old hardcoded Firestore entry (annual-anniversary-0101) to avoid duplicates.
+  const anniversaryEvent = anniversaryDate ? {
+    id: "synth-anniversary",
+    title: "在一起纪念日",
+    date: anniversaryDate,
+    type: "anniversary",
+    owner: null,
+    repeat: true,
+    allDay: true,
+    note: "",
+    locked: true,
+  } : null;
+  const firestoreEvents = events.filter(e => e.id !== "annual-anniversary-0101");
+  const allEvents = [...firestoreEvents, ...allSchoolEvents, ...(anniversaryEvent ? [anniversaryEvent] : [])];
 
-  if (authLoading) return (
-    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--muted)",fontSize:14}}>加载中...</div>
-  );
+  if (authLoading) return <LoadingScreen />;
+  if (maintenance && !user) return <MaintenanceScreen />;
   if (noPermission) return (
     <><div className="blob blob-1"/><div className="blob blob-2"/><div className="blob blob-3"/><NoPermissionScreen onLogout={handleLogout} /></>
   );
@@ -1557,6 +1756,7 @@ function AppContent() {
               {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
             </button>
             <button className="icon-btn" onClick={() => setSearchOpen(true)} title="搜索"><Search size={17} /></button>
+            <button className="icon-btn" onClick={() => setSchoolOpen(true)} title="学校日历"><GraduationCap size={17} /></button>
             <button className="icon-btn" onClick={() => setProfileOpen(true)} title="个人资料"><User size={17} /></button>
             <button className="btn-add" onClick={() => { setEditEvent(null); setModalOpen(true); }}><Plus size={18} /> 添加</button>
           </div>
@@ -1571,11 +1771,13 @@ function AppContent() {
             onChangeMonth={d => setCurDate(new Date(curDate.getFullYear(), curDate.getMonth()+d, 1))}
             onJumpTo={d => setCurDate(d)}
             viewMode={viewMode} />
-          <Sidebar selDate={selDate} events={allEvents} curDate={curDate}
-            viewMode={viewMode}
-            onDelete={e => setDeleteTarget(e)}
-            onEdit={e => { setEditEvent(e); setModalOpen(true); }}
-            onPhotoClick={src => setLightboxSrc(src)} />
+          <div ref={detailRef}>
+            <Sidebar selDate={selDate} events={allEvents} curDate={curDate}
+              viewMode={viewMode}
+              onDelete={e => setDeleteTarget(e)}
+              onEdit={e => { setEditEvent(e); setModalOpen(true); }}
+              onPhotoClick={src => setLightboxSrc(src)} />
+          </div>
         </div>
       </div>
 

@@ -17,7 +17,12 @@ service cloud.firestore {
                      (resource.data.private != true || isOwner());
       allow create: if isAuthorized() &&
                        request.resource.data.ownerEmail == request.auth.token.email;
-      allow update, delete: if isAuthorized() && isOwner();
+      // Both users may edit/delete shared events (together / anniversary).
+      // Private and personal events remain owner-only.
+      allow update, delete: if isAuthorized() &&
+                               (isOwner() ||
+                                resource.data.type == "together" ||
+                                resource.data.type == "anniversary");
     }
 
     match /events/{eventId}/comments/{commentId} {
@@ -34,7 +39,9 @@ service cloud.firestore {
     }
 
     match /couple/{doc} {
-      allow read, write: if isAuthorized();
+      // Public read of "shared" doc so maintenance flag works before login
+      allow read: if doc == "shared" || isAuthorized();
+      allow write: if isAuthorized();
     }
 
     match /pencil/{noteId} {
