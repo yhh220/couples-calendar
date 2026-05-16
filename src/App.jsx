@@ -1250,13 +1250,12 @@ function DiaryModal({ onClose, date }) {
 
   const getPos = e => {
     const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const src = e.touches?.[0] || e;
-    const pressure = e.pointerType === "pen" ? Math.max(0.1, e.pressure) : 0.5;
+    const ne = e.nativeEvent ?? e;
+    // offsetX/Y are always relative to the canvas element's padding box — no rect subtraction needed
     return {
-      x: (src.clientX - rect.left) * (canvas.width / rect.width),
-      y: (src.clientY - rect.top) * (canvas.height / rect.height),
-      pressure,
+      x: ne.offsetX * (canvas.width / canvas.offsetWidth),
+      y: ne.offsetY * (canvas.height / canvas.offsetHeight),
+      pressure: ne.pointerType === "pen" ? Math.max(0.1, ne.pressure) : 0.5,
     };
   };
 
@@ -1302,7 +1301,13 @@ function DiaryModal({ onClose, date }) {
       snapshotRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
       startPosRef.current = pos;
     } else {
-      ctx.beginPath(); ctx.moveTo(pos.x, pos.y);
+      // Stamp a dot at the exact press position so the brush tip anchors to the cursor
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, ctx.lineWidth / 2, 0, Math.PI * 2);
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(pos.x, pos.y);
     }
     isDrawingRef.current = true;
   };
