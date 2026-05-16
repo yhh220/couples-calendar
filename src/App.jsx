@@ -1259,18 +1259,24 @@ function DiaryModal({ onClose, date }) {
     };
   };
 
+  // Convert screen pixels → canvas pixels so stroke size feels consistent at any canvas resolution
+  const toCanvasPx = px => {
+    const c = canvasRef.current;
+    return px * (c ? c.width / c.offsetWidth : 1);
+  };
+
   const applyStyle = (ctx, pressure) => {
     if (isEraser) {
       ctx.globalCompositeOperation = "destination-out";
       ctx.globalAlpha = 1;
-      ctx.lineWidth = DIARY_ERASER_SIZES[eraserIdx];
+      ctx.lineWidth = toCanvasPx(DIARY_ERASER_SIZES[eraserIdx]);
       ctx.lineCap = "round";
       ctx.strokeStyle = "rgba(0,0,0,1)";
     } else {
       const pen = DIARY_PENS.find(p => p.key === penKey) || DIARY_PENS[0];
       ctx.globalCompositeOperation = "source-over";
       ctx.globalAlpha = pen.alpha;
-      ctx.lineWidth = Math.max(1, pressure * DIARY_SIZES[sizeIdx] * pen.widthMult);
+      ctx.lineWidth = Math.max(toCanvasPx(1), pressure * toCanvasPx(DIARY_SIZES[sizeIdx]) * pen.widthMult);
       ctx.lineCap = pen.cap;
       ctx.lineJoin = "round";
       ctx.strokeStyle = color;
@@ -1370,17 +1376,11 @@ function DiaryModal({ onClose, date }) {
     if (!user || !date) return;
     setSaving(true); setSaveError("");
     try {
-      const canvas = canvasRef.current;
-      // toBlob is binary (no base64 overhead); Safari falls back to PNG automatically
-      const blob = await new Promise((resolve, reject) => {
-        canvas.toBlob(b => b ? resolve(b) : reject(new Error("canvas export failed")), "image/webp", 0.88);
-      });
-      const ext = blob.type === "image/webp" ? "webp" : "png";
-      const storageRef = ref(storage, `diary/${user.uid}/${date}.${ext}`);
-      await uploadBytes(storageRef, blob, { contentType: blob.type });
-      const imageUrl = await getDownloadURL(storageRef);
+      // Export as PNG data URL and store directly in Firestore — no Storage upload needed
+      const imageUrl = canvasRef.current.toDataURL("image/png");
       await setDoc(doc(db, "pencil", `${user.uid}-${date}`), {
-        ownerEmail: user.email, date, imageUrl, updatedAt: serverTimestamp(),
+        ownerEmail: user.email, date, imageUrl,
+        updatedAt: serverTimestamp(),
       }, { merge: true });
       onClose();
     } catch (err) {
@@ -1481,7 +1481,7 @@ function DiaryModal({ onClose, date }) {
         {/* Canvas */}
         <div className="diary-canvas-wrap">
           {loading && <div className="diary-loading"><span>加载中…</span></div>}
-          <canvas ref={canvasRef} width={800} height={480} className="diary-canvas"
+          <canvas ref={canvasRef} width={480} height={300} className="diary-canvas"
             onPointerDown={onPointerDown} onPointerMove={onPointerMove}
             onPointerUp={onPointerUp} onPointerLeave={onPointerUp}
             style={{touchAction:"none", cursor: cursorStyle, opacity: loading ? 0 : 1}} />
