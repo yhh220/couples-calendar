@@ -1760,13 +1760,14 @@ function AppContent() {
           </div>
           <div className="header-right">
             <ViewToggle value={viewMode} onChange={setViewMode} />
-            <button className="icon-btn" onClick={() => setTheme(t => t==="light"?"dark":"light")} title="切换主题">
-              {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
-            </button>
+            <div className="nav-divider" />
             <button className="icon-btn" onClick={() => setSearchOpen(true)} title="搜索"><Search size={17} /></button>
             <button className="icon-btn" onClick={() => setSchoolOpen(true)} title="学校日历"><GraduationCap size={17} /></button>
             <button className="icon-btn" onClick={() => setProfileOpen(true)} title="个人资料"><User size={17} /></button>
-            <button className="btn-add" onClick={() => { setEditEvent(null); setModalOpen(true); }}><Plus size={18} /> 添加</button>
+            <div className="nav-divider" />
+            <button className="icon-btn" onClick={() => setTheme(t => t==="light"?"dark":"light")} title="切换主题">
+              {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
+            </button>
           </div>
         </header>
 

@@ -125,8 +125,15 @@ em { color: var(--together); font-style: normal; }
 .header-right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-shrink: 0;
+}
+.nav-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--line);
+  border-radius: 1px;
+  margin: 0 2px;
 }
 
 /* ─────────────────────────────────────────
@@ -183,10 +190,11 @@ em { color: var(--together); font-style: normal; }
 .ev-del:hover { background: rgba(221,79,104,.1); color: var(--together); border-color: transparent; }
 
 .fab {
-  display: none;
+  display: grid;
+  place-items: center;
   position: fixed;
-  right: 20px;
-  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  right: 24px;
+  bottom: calc(28px + env(safe-area-inset-bottom, 0px));
   z-index: 50;
   width: 58px; height: 58px;
   border-radius: 999px;
@@ -195,6 +203,7 @@ em { color: var(--together); font-style: normal; }
   border: 0;
   box-shadow: 0 8px 28px rgba(221,79,104,.42);
   transition: transform .2s, box-shadow .2s;
+  cursor: pointer;
 }
 .fab:hover { transform: scale(1.1) translateY(-2px); box-shadow: 0 14px 36px rgba(221,79,104,.5); }
 .fab svg { width: 22px; height: 22px; }
@@ -941,11 +950,9 @@ select.f-input { cursor: pointer; }
   .header { flex-direction: column; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
   h1 { font-size: clamp(28px, 8vw, 46px); }
   .header p { font-size: 13px; }
-  .header-right { width: 100%; gap: 8px; flex-wrap: nowrap; justify-content: flex-start; }
+  .header-right { width: 100%; gap: 6px; flex-wrap: nowrap; justify-content: flex-start; }
+  .nav-divider { display: none; }
 
-  /* FAB appears */
-  .btn-add { display: none; }
-  .fab { display: grid; }
   .fab svg { width: 20px; height: 20px; }
 
   /* Calendar */
