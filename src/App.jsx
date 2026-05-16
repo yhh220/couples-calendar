@@ -639,8 +639,8 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
     { key: "anniversary",label: "纪念日", icon: <Star size={15} />,         color: "var(--anniversary)" },
     { key: "exam",       label: "考试",  icon: <GraduationCap size={15} />, color: "var(--exam)" },
     { key: "holiday",    label: "假期",  icon: <Flag size={15} />,          color: "var(--holiday)" },
-    { key: "personal",   label: "普通",  icon: <Smile size={15} />,         color: "var(--personal)" },
-    { key: "school",     label: "学校",  icon: <GraduationCap size={15} />, color: "var(--school)" },
+    { key: "personal",   label: "特别事件", icon: <Smile size={15} />,      color: "var(--personal)" },
+    { key: "school",     label: "学校",  icon: <FileText size={15} />,      color: "var(--school)" },
   ];
   const mineStatsRows = [
     { key: "exam",     label: "考试",  icon: <GraduationCap size={15} />, color: "var(--exam)" },
@@ -775,7 +775,7 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
 // ─────────────────────────────────────────
 // ADD / EDIT MODAL
 // ─────────────────────────────────────────
-function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit }) {
+function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, viewMode }) {
   const { user, ME } = useMe();
   const isEdit = Boolean(initEdit);
   const [title, setTitle] = useState("");
@@ -801,7 +801,7 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit })
     if (!open) return;
     if (initEdit) {
       setTitle(initEdit.title || "");
-      setType(initEdit.type || "work");
+      setType(initEdit.type || (viewMode === "mine" ? "personal" : "together"));
       setDate(initEdit.date || defaultDate || todayDs());
       setEndDate(initEdit.endDate || "");
       setTime(initEdit.time || "");
@@ -823,7 +823,7 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit })
   }, [open, initEdit]);
 
   const resetForm = () => {
-    setTitle(""); setType("work"); setTime(""); setNote(""); setEndDate("");
+    setTitle(""); setType(viewMode === "mine" ? "personal" : "together"); setTime(""); setNote(""); setEndDate("");
     setAllDay(false); setRepeat(false); setPhoto(null); setPhotoPreview(null);
     setError(""); setIsPrivate(false); setPhotoCleared(false);
     setRecType("none"); setRecEnd(""); setRecWeekdays([0,1,2,3,4,5,6]);
@@ -906,15 +906,21 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit })
   if (!open) return null;
   const isShared = type === "together" || type === "anniversary";
   const TYPE_ACCENT = { work:"var(--him)", assign:"var(--assign)", social:"var(--social)", together:"var(--together)", anniversary:"var(--anniversary)", exam:"var(--exam)", personal:"var(--personal)" };
-  const typeList = [
-    { key:"work",        label:"工作",      icon:<Briefcase size={17} /> },
-    { key:"assign",      label:"课业",       icon:<FileText size={17} /> },
-    { key:"social",      label:"社交",      icon:<Users size={17} /> },
-    { key:"personal",    label:"普通",      icon:<Smile size={17} /> },
-    { key:"together",    label:"约会",      icon:<Heart size={17} /> },
-    { key:"anniversary", label:"纪念日",    icon:<Star size={17} /> },
-    { key:"exam",        label:"考试",      icon:<GraduationCap size={17} /> },
-  ];
+  const typeList = viewMode === "mine"
+    ? [
+        { key:"personal",    label:"普通",   icon:<Smile size={17} /> },
+        { key:"social",      label:"社交",   icon:<Users size={17} /> },
+        { key:"assign",      label:"课业",   icon:<FileText size={17} /> },
+        { key:"exam",        label:"考试",   icon:<GraduationCap size={17} /> },
+        { key:"work",        label:"工作",   icon:<Briefcase size={17} /> },
+      ]
+    : [
+        { key:"together",    label:"约会",   icon:<Heart size={17} /> },
+        { key:"anniversary", label:"纪念日", icon:<Star size={17} /> },
+        { key:"exam",        label:"考试",   icon:<GraduationCap size={17} /> },
+        { key:"assign",      label:"课业",   icon:<FileText size={17} /> },
+        { key:"work",        label:"工作",   icon:<Briefcase size={17} /> },
+      ];
 
   return (
     <div className="overlay open" onClick={e => { if (e.target.classList.contains("overlay")) { resetForm(); onClose(); } }}>
@@ -1817,6 +1823,7 @@ function AppContent() {
         defaultDate={selDate}
         onSubmit={handleSubmitEvent}
         editEvent={editEvent}
+        viewMode={viewMode}
       />
 
       <SchoolCalendarModal open={schoolOpen} onClose={() => setSchoolOpen(false)}
