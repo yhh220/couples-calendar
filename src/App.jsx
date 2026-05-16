@@ -11,7 +11,7 @@ import {
   collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, where,
   setDoc, getDoc, updateDoc, serverTimestamp,
 } from "firebase/firestore";
-import { ref, uploadString, getDownloadURL, deleteObject } from "firebase/storage";
+import { ref, uploadString, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { getHolidayForDate, MY_HOLIDAYS } from "./holidays";
 import "./index.css";
 
@@ -1364,18 +1364,28 @@ function DiaryModal({ onClose, date }) {
     setHistory([]);
   };
 
+  const [saveError, setSaveError] = useState("");
+
   const saveDiary = async () => {
     if (!user || !date) return;
-    setSaving(true);
+    setSaving(true); setSaveError("");
     try {
-      const dataUrl = canvasRef.current.toDataURL("image/webp", 0.88);
-      const storageRef = ref(storage, `diary/${user.uid}/${date}.webp`);
-      await uploadString(storageRef, dataUrl, "data_url");
+      const canvas = canvasRef.current;
+      // toBlob is binary (no base64 overhead); Safari falls back to PNG automatically
+      const blob = await new Promise((resolve, reject) => {
+        canvas.toBlob(b => b ? resolve(b) : reject(new Error("canvas export failed")), "image/webp", 0.88);
+      });
+      const ext = blob.type === "image/webp" ? "webp" : "png";
+      const storageRef = ref(storage, `diary/${user.uid}/${date}.${ext}`);
+      await uploadBytes(storageRef, blob, { contentType: blob.type });
       const imageUrl = await getDownloadURL(storageRef);
       await setDoc(doc(db, "pencil", `${user.uid}-${date}`), {
         ownerEmail: user.email, date, imageUrl, updatedAt: serverTimestamp(),
       }, { merge: true });
       onClose();
+    } catch (err) {
+      console.error("diary save:", err);
+      setSaveError("保存失败，请重试");
     } finally { setSaving(false); }
   };
 
@@ -1388,9 +1398,12 @@ function DiaryModal({ onClose, date }) {
         <div className="diary-hdr">
           <span className="diary-title">✏️ {dateLabel}</span>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            <button className="pbtn" onClick={undo} disabled={history.length===0} title="撤销 (Ctrl+Z)">↩ 撤销</button>
-            <button className="pbtn" onClick={clearCanvas} title="清空画布">🗑 清空</button>
-            <button className="pbtn primary" onClick={saveDiary} disabled={saving}>{saving?"保存中…":"✓ 保存"}</button>
+            {saveError && <span style={{fontSize:12,color:"var(--together)",fontWeight:700}}>{saveError}</span>}
+            <button className="pbtn" onClick={undo} disabled={history.length===0}>↩ 撤销</button>
+            <button className="pbtn" onClick={clearCanvas}>🗑 清空</button>
+            <button className="pbtn primary" onClick={saveDiary} disabled={saving}>
+              {saving ? <><span className="profile-uploading" style={{width:14,height:14,borderWidth:2}} /> 保存中</> : "✓ 保存"}
+            </button>
             <button className="modal-close" onClick={onClose}><X size={16} /></button>
           </div>
         </div>
