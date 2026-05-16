@@ -3,7 +3,7 @@ import {
   Heart, Sun, Moon, Plus, ChevronLeft, ChevronRight, Check, X,
   LogOut, CalendarIcon, Flag, Star, Briefcase, FileText,
   Users, ImageIcon, Cake, Search, User, Lock, MessageCircle,
-  Edit2, BookOpen, WifiOff, GraduationCap, ChevronDown, ChevronUp, Trash2, Smile,
+  Edit2, BookOpen, WifiOff, GraduationCap, ChevronDown, ChevronUp, Trash2, Smile, Camera,
 } from "lucide-react";
 import { auth, provider, db, storage } from "./firebase";
 import { signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from "firebase/auth";
@@ -1312,32 +1312,21 @@ function DiaryModal({ onClose }) {
 // ─────────────────────────────────────────
 // PROFILE DRAWER
 // ─────────────────────────────────────────
-function ProfileDrawer({ open, onClose, onLogout, anniversaryDate, onAnniversaryUpdate }) {
+function ProfileDrawer({ open, onClose, onLogout }) {
   const { user, ME } = useMe();
   const [profile, setProfile] = useState(null);
   const [editName, setEditName] = useState(false);
   const [nameVal, setNameVal] = useState("");
-  const [annEdit, setAnnEdit] = useState(false);
-  const [annVal, setAnnVal] = useState(anniversaryDate);
   const [saving, setSaving] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [diaryOpen, setDiaryOpen] = useState(false);
-
-  const todayStart = new Date(); todayStart.setHours(0,0,0,0);
-  const annStart = new Date(anniversaryDate + "T00:00:00");
-  const daysTotal = Math.round((todayStart - annStart) / 86400000) + 1;
-  const nextAnn = (() => {
-    const y = todayStart.getFullYear();
-    const [,am,ad] = anniversaryDate.split("-").map(Number);
-    let next = new Date(y, am-1, ad); next.setHours(0,0,0,0);
-    if (next < todayStart) next = new Date(y+1, am-1, ad);
-    return Math.round((next - todayStart) / 86400000);
-  })();
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     if (!user || !open) return;
     getDoc(doc(db, "users", user.uid)).then(snap => {
       if (snap.exists()) setProfile(snap.data());
-      else setProfile({ displayName: ME === "him" ? "你" : "她", avatarEmoji: ME === "him" ? "🖤" : "🩷" });
+      else setProfile({ displayName: ME === "him" ? "YH" : "SY" });
     });
   }, [user, open]);
 
@@ -1350,13 +1339,28 @@ function ProfileDrawer({ open, onClose, onLogout, anniversaryDate, onAnniversary
     setEditName(false); setSaving(false);
   };
 
-  const saveAnn = async () => {
-    if (!isDateString(annVal)) return;
-    setSaving(true);
-    await setDoc(doc(db, "couple", "shared"), { anniversaryDate: annVal }, { merge: true });
-    onAnniversaryUpdate(annVal);
-    setAnnEdit(false); setSaving(false);
+  const handlePhotoChange = async e => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+    setUploadingPhoto(true);
+    const reader = new FileReader();
+    reader.onload = async ev => {
+      try {
+        const dataUrl = ev.target.result;
+        const storageRef = ref(storage, `avatars/${user.uid}`);
+        await uploadString(storageRef, dataUrl, "data_url");
+        const photoUrl = await getDownloadURL(storageRef);
+        await setDoc(doc(db, "users", user.uid), { photoUrl }, { merge: true });
+        setProfile(p => ({ ...p, photoUrl }));
+      } catch (err) { console.error(err); }
+      setUploadingPhoto(false);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
   };
+
+  const initials = (profile?.displayName || (ME === "him" ? "YH" : "SY")).slice(0, 2).toUpperCase();
+  const accentColor = ME === "him" ? "var(--him)" : "var(--her)";
 
   if (!open) return null;
   return (
@@ -1368,57 +1372,54 @@ function ProfileDrawer({ open, onClose, onLogout, anniversaryDate, onAnniversary
           <button className="modal-close" onClick={onClose}><X size={16} /></button>
         </div>
 
+        {/* Avatar */}
+        <div className="profile-avatar-section">
+          <button className="profile-avatar-btn" onClick={() => fileInputRef.current?.click()}
+            title="点击更换头像" disabled={uploadingPhoto}>
+            {profile?.photoUrl
+              ? <img src={profile.photoUrl} alt="avatar" className="profile-avatar-img" />
+              : <span className="profile-avatar-initials" style={{background: accentColor}}>{initials}</span>
+            }
+            <span className="profile-avatar-overlay">
+              {uploadingPhoto ? <span className="profile-uploading" /> : <Camera size={18} />}
+            </span>
+          </button>
+          <input ref={fileInputRef} type="file" accept="image/*" style={{display:"none"}} onChange={handlePhotoChange} />
+        </div>
+
+        {/* Name */}
         <div className="profile-section">
-          <div className="profile-avatar-row">
-            <span className="profile-emoji">{profile?.avatarEmoji || (ME === "him" ? "🖤" : "🩷")}</span>
-            <div style={{flex:1,minWidth:0}}>
-              {editName ? (
-                <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-                  <input className="f-input" style={{width:130,minHeight:36}} value={nameVal}
-                    onChange={e => setNameVal(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && saveName()} autoFocus />
-                  <button className="pbtn primary" style={{minHeight:36,padding:"0 12px"}} onClick={saveName} disabled={saving}>保存</button>
-                  <button className="pbtn" style={{minHeight:36,padding:"0 10px"}} onClick={() => setEditName(false)}>取消</button>
-                </div>
-              ) : (
-                <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                  <span style={{fontWeight:900,fontSize:17}}>{profile?.displayName || (ME === "him" ? "你" : "她")}</span>
-                  <button className="icon-btn" style={{width:28,height:28}} onClick={() => { setNameVal(profile?.displayName || ""); setEditName(true); }}><Edit2 size={12} /></button>
-                </div>
-              )}
-              <div style={{color:"var(--muted)",fontSize:12,marginTop:3}}>{user?.email}</div>
+          <div className="profile-field-label">名字</div>
+          {editName ? (
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <input className="f-input" style={{flex:1,minHeight:38}} value={nameVal}
+                onChange={e => setNameVal(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") saveName(); if (e.key === "Escape") setEditName(false); }}
+                autoFocus />
+              <button className="pbtn primary" style={{minHeight:38,padding:"0 14px"}} onClick={saveName} disabled={saving}>保存</button>
+              <button className="pbtn" style={{minHeight:38,padding:"0 10px"}} onClick={() => setEditName(false)}>取消</button>
             </div>
-          </div>
+          ) : (
+            <div className="profile-name-row">
+              <span className="profile-display-name">{profile?.displayName || initials}</span>
+              <button className="icon-btn" onClick={() => { setNameVal(profile?.displayName || ""); setEditName(true); }}>
+                <Edit2 size={14} />
+              </button>
+            </div>
+          )}
+          <div className="profile-email">{user?.email}</div>
         </div>
 
-        <div className="profile-section">
-          <div className="profile-section-title">💑 在一起</div>
-          <div className="profile-stat-row"><span>在一起天数</span><strong>{daysTotal} 天</strong></div>
-          <div className="profile-stat-row">
-            <span>纪念日</span>
-            {annEdit ? (
-              <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                <input className="f-input" type="date" style={{width:140,minHeight:34}} value={annVal} onChange={e => setAnnVal(e.target.value)} />
-                <button className="pbtn primary" style={{minHeight:34,padding:"0 10px"}} onClick={saveAnn} disabled={saving}>保存</button>
-              </div>
-            ) : (
-              <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                <strong>{anniversaryDate}</strong>
-                <button className="icon-btn" style={{width:26,height:26}} onClick={() => { setAnnVal(anniversaryDate); setAnnEdit(true); }}><Edit2 size={11} /></button>
-              </div>
-            )}
-          </div>
-          <div className="profile-stat-row"><span>距下次纪念日</span><strong>{nextAnn} 天</strong></div>
-        </div>
-
+        {/* Diary */}
         <div className="profile-section">
           <button className="btn-submit" style={{background:"var(--her)",marginBottom:0}} onClick={() => setDiaryOpen(true)}>
             <BookOpen size={15} /> 打开日记本
           </button>
         </div>
 
+        {/* Logout */}
         <div className="profile-section" style={{paddingBottom:0}}>
-          <button className="btn-submit" style={{background:"rgba(127,127,127,.1)",color:"var(--text)",boxShadow:"none",marginBottom:0}} onClick={onLogout}>
+          <button className="btn-submit profile-logout-btn" onClick={onLogout}>
             <LogOut size={15} /> 退出登录
           </button>
         </div>
@@ -1850,8 +1851,6 @@ function AppContent() {
         open={profileOpen}
         onClose={() => setProfileOpen(false)}
         onLogout={handleLogout}
-        anniversaryDate={anniversaryDate}
-        onAnniversaryUpdate={date => setAnniversaryDate(date)}
       />
 
       {safeImageSrc(lightboxSrc) && (

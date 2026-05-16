@@ -825,15 +825,44 @@ select.f-input { cursor: pointer; }
 /* ─────────────────────────────────────────
    PROFILE MODAL
 ───────────────────────────────────────── */
-.profile-modal { width: min(440px, 100%); }
+/* ── Profile Modal ── */
+.profile-modal { width: min(400px, 100%); }
 .profile-section { border-top: 1px solid var(--line); padding: 16px 0; }
-.profile-section:first-of-type { border-top: 0; padding-top: 4px; }
-.profile-section-title { font-size: 11px; font-weight: 800; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; margin-bottom: 12px; }
-.profile-avatar-row { display: flex; align-items: center; gap: 14px; }
-.profile-emoji { font-size: 38px; line-height: 1; }
-.profile-stat-row { display: flex; justify-content: space-between; align-items: center; font-size: 14px; margin-bottom: 8px; gap: 12px; }
-.profile-stat-row span { color: var(--muted); }
-.profile-stat-row strong { font-weight: 800; flex-shrink: 0; }
+.profile-section:first-of-type { border-top: 0; }
+
+/* Avatar */
+.profile-avatar-section { display: flex; justify-content: center; padding: 8px 0 20px; }
+.profile-avatar-btn {
+  position: relative; width: 96px; height: 96px; border-radius: 50%;
+  overflow: hidden; cursor: pointer; flex-shrink: 0;
+  border: 3px solid var(--line);
+  transition: opacity .18s;
+}
+.profile-avatar-btn:hover { opacity: .85; }
+.profile-avatar-btn:hover .profile-avatar-overlay { opacity: 1; }
+.profile-avatar-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.profile-avatar-initials {
+  width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+  font-size: 28px; font-weight: 900; color: #fff; letter-spacing: .02em;
+}
+.profile-avatar-overlay {
+  position: absolute; inset: 0; background: rgba(0,0,0,.42);
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; opacity: 0; transition: opacity .18s;
+}
+.profile-uploading {
+  width: 20px; height: 20px; border: 2.5px solid rgba(255,255,255,.4);
+  border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite;
+}
+
+/* Name & email */
+.profile-field-label { font-size: 11px; font-weight: 800; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; margin-bottom: 8px; }
+.profile-name-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.profile-display-name { font-size: 20px; font-weight: 900; line-height: 1.2; }
+.profile-email { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+/* Logout */
+.profile-logout-btn { background: rgba(127,127,127,.1) !important; color: var(--text) !important; box-shadow: none !important; margin-bottom: 0; }
 
 /* ─────────────────────────────────────────
    COMMENTS
@@ -886,6 +915,7 @@ select.f-input { cursor: pointer; }
 .loading-card { display: flex; flex-direction: column; align-items: center; gap: 18px; }
 .loading-heart { color: var(--together); animation: heartbeat 1.4s ease-in-out infinite; }
 .loading-heart svg { width: 36px; height: 36px; }
+@keyframes spin { to { transform: rotate(360deg); } }
 @keyframes heartbeat {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.22); }
