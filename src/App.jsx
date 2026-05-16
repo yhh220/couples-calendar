@@ -731,7 +731,11 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
         <div className="ov-header">
           <div className="ov-title">{MONTH_NAMES[m-1]}概览</div>
           <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-            <div className="ov-total-badge">{monthEvts.length + holidayCount} 个活动</div>
+            <div className="ov-total-badge">
+              {viewMode === "mine"
+                ? typeCount("exam") + typeCount("assign") + typeCount("personal") + typeCount("social") + holidayCount
+                : monthEvts.length + holidayCount} 个活动
+            </div>
             <button className="icon-btn" style={{width:28,height:28}} onClick={() => setExpandStats(v => !v)}>
               {expandStats ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
             </button>
@@ -759,7 +763,7 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
               <div className="ov-stat-row"><span>特别事件</span><span>{typeCount("personal")}</span></div>
               <div className="ov-stat-row"><span>社交</span><span>{typeCount("social")}</span></div>
               <div className="ov-stat-row"><span>节假日</span><span>{holidayCount}</span></div>
-              <div className="ov-stat-row total-row"><span>合计</span><span>{monthEvts.length + holidayCount}</span></div>
+              <div className="ov-stat-row total-row"><span>合计</span><span>{typeCount("exam") + typeCount("assign") + typeCount("personal") + typeCount("social") + holidayCount}</span></div>
             </> : <>
               <div className="ov-stat-row"><span>约会</span><span>{typeCount("together")}</span></div>
               <div className="ov-stat-row"><span>纪念日</span><span>{typeCount("anniversary")}</span></div>
@@ -773,7 +777,7 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
           </div>
         )}
       </div>
-      {diaryDate && <DiaryModal date={diaryDate} onClose={() => setDiaryDate(null)} />}
+      {diaryDate && <DiaryModal date={diaryDate} isShared={viewMode === "shared"} onClose={() => setDiaryDate(null)} />}
     </div>
   );
 }
@@ -1191,7 +1195,7 @@ const DIARY_COLORS = [
 const DIARY_SIZES = [2, 5, 10, 18];
 const DIARY_ERASER_SIZES = [12, 28, 52];
 
-function DiaryModal({ onClose, date }) {
+function DiaryModal({ onClose, date, isShared = false }) {
   const { user } = useMe();
   const canvasRef = useRef();
   const snapshotRef = useRef(null);
@@ -1221,7 +1225,8 @@ function DiaryModal({ onClose, date }) {
     isDrawingRef.current = false;
     const canvas = canvasRef.current;
     if (canvas) canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
-    getDoc(doc(db, "pencil", `${user.uid}-${date}`)).then(snap => {
+    const docKey = isShared ? `shared-${date}` : `${user.uid}-${date}`;
+    getDoc(doc(db, "pencil", docKey)).then(snap => {
       if (snap.exists() && snap.data().imageUrl) {
         const img = new Image();
         img.crossOrigin = "anonymous";
@@ -1368,8 +1373,10 @@ function DiaryModal({ onClose, date }) {
     try {
       // Export as PNG data URL and store directly in Firestore — no Storage upload needed
       const imageUrl = canvasRef.current.toDataURL("image/png");
-      await setDoc(doc(db, "pencil", `${user.uid}-${date}`), {
+      const docKey = isShared ? `shared-${date}` : `${user.uid}-${date}`;
+      await setDoc(doc(db, "pencil", docKey), {
         ownerEmail: user.email, date, imageUrl,
+        shared: isShared,
         updatedAt: serverTimestamp(),
       }, { merge: true });
       onClose();
@@ -1600,7 +1607,6 @@ function SchoolCalendarModal({ open, onClose, events, onAdd, onImport, onDelete 
   const [date, setDate] = useState(todayDs());
   const [endDate, setEndDate] = useState("");
   const [schoolType, setSchoolType] = useState("exam");
-  const [evType, setEvType] = useState("assign");
   const [owner, setOwner] = useState("her");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1608,9 +1614,8 @@ function SchoolCalendarModal({ open, onClose, events, onAdd, onImport, onDelete 
   const schoolTypes = [
     { key:"exam", label:"考试" }, { key:"break", label:"假期" }, { key:"results", label:"成绩" }, { key:"assign", label:"课程" },
   ];
-  const evTypes = [
-    { key:"assign", label:"作业/课程" }, { key:"exam", label:"考试" }, { key:"holiday", label:"假期" },
-  ];
+  // Map schoolType → event type (determines color automatically)
+  const schoolTypeToEvType = { exam: "exam", break: "holiday", results: "assign", assign: "assign" };
 
   const submitOne = async () => {
     if (loading) return;
@@ -1620,6 +1625,7 @@ function SchoolCalendarModal({ open, onClose, events, onAdd, onImport, onDelete 
     if (endDate && (!isDateString(endDate) || endDate < date)) { setError("结束日期不能早于开始日期。"); return; }
     setLoading(true); setError("");
     try {
+      const evType = schoolTypeToEvType[schoolType] ?? "assign";
       await onAdd({ title: safeTitle, date, endDate: endDate||null, type: evType, schoolType, owner, source: "school", allDay: true });
       setTitle(""); setEndDate("");
     } catch { setError("保存失败，请重试。"); }
@@ -1658,19 +1664,11 @@ function SchoolCalendarModal({ open, onClose, events, onAdd, onImport, onDelete 
               <label className="f-label">结束日期（选填）</label>
               <input className="f-input" type="date" value={endDate} min={date} onChange={e => setEndDate(e.target.value)} />
             </div>
-            <div className="f-row">
-              <div className="f-group" style={{marginBottom:0}}>
-                <label className="f-label">学校分类</label>
-                <select className="f-input" value={schoolType} onChange={e => setSchoolType(e.target.value)}>
-                  {schoolTypes.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
-                </select>
-              </div>
-              <div className="f-group" style={{marginBottom:0}}>
-                <label className="f-label">颜色</label>
-                <select className="f-input" value={evType} onChange={e => setEvType(e.target.value)}>
-                  {evTypes.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
-                </select>
-              </div>
+            <div className="f-group">
+              <label className="f-label">学校分类</label>
+              <select className="f-input" value={schoolType} onChange={e => setSchoolType(e.target.value)}>
+                {schoolTypes.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+              </select>
             </div>
             {error && <div className="form-error" style={{marginTop:10}}>{error}</div>}
             <button className="btn-submit school-submit" style={{marginTop:14}} onClick={submitOne} disabled={loading}>
@@ -1740,9 +1738,11 @@ function AppContent() {
   const [anniversaryDate, setAnniversaryDate] = useState("2025-01-01");
   const [maintenance, setMaintenance] = useState(false);
   const [diaryImages, setDiaryImages] = useState({});
+  const [sharedDiaryImages, setSharedDiaryImages] = useState({});
 
   const ME = user?.email === HIM_EMAIL ? "him" : "her";
   const PARTNER = ME === "him" ? "her" : "him";
+
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -1789,7 +1789,7 @@ function AppContent() {
     return () => unsub?.();
   }, [user]);
 
-  // Subscribe to this user's diary sketches
+  // Subscribe to this user's private diary sketches (filter shared ones client-side)
   useEffect(() => {
     if (!user) return;
     const q = query(collection(db, "pencil"), where("ownerEmail", "==", user.email));
@@ -1797,10 +1797,25 @@ function AppContent() {
       const map = {};
       snap.docs.forEach(d => {
         const data = d.data();
-        if (data.date && data.imageUrl) map[data.date] = data.imageUrl;
+        if (data.date && data.imageUrl && !data.shared) map[data.date] = data.imageUrl;
       });
       setDiaryImages(map);
     }, err => console.error("pencil listener:", err));
+    return () => unsub();
+  }, [user]);
+
+  // Subscribe to shared diary sketches (both users see these)
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, "pencil"), where("shared", "==", true));
+    const unsub = onSnapshot(q, snap => {
+      const map = {};
+      snap.docs.forEach(d => {
+        const data = d.data();
+        if (data.date && data.imageUrl) map[data.date] = data.imageUrl;
+      });
+      setSharedDiaryImages(map);
+    }, err => console.error("shared pencil listener:", err));
     return () => unsub();
   }, [user]);
 
@@ -1989,7 +2004,7 @@ function AppContent() {
             onSelectDay={setSelDate}
             onChangeMonth={d => setCurDate(new Date(curDate.getFullYear(), curDate.getMonth()+d, 1))}
             onJumpTo={d => setCurDate(d)}
-            viewMode={viewMode} diaryImages={diaryImages} />
+            viewMode={viewMode} diaryImages={viewMode === "mine" ? diaryImages : sharedDiaryImages} />
           <div ref={detailRef}>
             <Sidebar selDate={selDate} events={allEvents} curDate={curDate}
               viewMode={viewMode}

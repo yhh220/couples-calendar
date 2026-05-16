@@ -963,7 +963,7 @@ select.f-input { cursor: pointer; }
 .day-sketch {
   position: absolute; inset: 2px; width: calc(100% - 4px); height: calc(100% - 4px);
   object-fit: cover; border-radius: 8px;
-  opacity: 0.22; pointer-events: none; z-index: 0;
+  opacity: 0.55; pointer-events: none; z-index: 0;
 }
 .day-num, .day-pips { position: relative; z-index: 1; }
 
