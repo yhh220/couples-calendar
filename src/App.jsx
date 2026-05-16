@@ -1225,8 +1225,10 @@ function DiaryModal({ onClose, date, isShared = false }) {
     isDrawingRef.current = false;
     const canvas = canvasRef.current;
     if (canvas) canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
-    const docKey = isShared ? `shared-${date}` : `${user.uid}-${date}`;
-    getDoc(doc(db, "pencil", docKey)).then(snap => {
+    const [col, docKey] = isShared
+      ? ["couple", `diary_${date}`]
+      : ["pencil", `${user.uid}-${date}`];
+    getDoc(doc(db, col, docKey)).then(snap => {
       if (snap.exists() && snap.data().imageUrl) {
         const img = new Image();
         img.crossOrigin = "anonymous";
@@ -1373,12 +1375,16 @@ function DiaryModal({ onClose, date, isShared = false }) {
     try {
       // Export as PNG data URL and store directly in Firestore — no Storage upload needed
       const imageUrl = canvasRef.current.toDataURL("image/png");
-      const docKey = isShared ? `shared-${date}` : `${user.uid}-${date}`;
-      await setDoc(doc(db, "pencil", docKey), {
-        ownerEmail: user.email, date, imageUrl,
-        shared: isShared,
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
+      if (isShared) {
+        await setDoc(doc(db, "couple", `diary_${date}`), {
+          date, imageUrl, type: "diary", updatedAt: serverTimestamp(),
+        }, { merge: true });
+      } else {
+        await setDoc(doc(db, "pencil", `${user.uid}-${date}`), {
+          ownerEmail: user.email, date, imageUrl,
+          updatedAt: serverTimestamp(),
+        }, { merge: true });
+      }
       onClose();
     } catch (err) {
       console.error("diary save:", err);
@@ -1789,7 +1795,7 @@ function AppContent() {
     return () => unsub?.();
   }, [user]);
 
-  // Subscribe to this user's private diary sketches (filter shared ones client-side)
+  // Subscribe to this user's private diary sketches
   useEffect(() => {
     if (!user) return;
     const q = query(collection(db, "pencil"), where("ownerEmail", "==", user.email));
@@ -1797,25 +1803,26 @@ function AppContent() {
       const map = {};
       snap.docs.forEach(d => {
         const data = d.data();
-        if (data.date && data.imageUrl && !data.shared) map[data.date] = data.imageUrl;
+        if (data.date && data.imageUrl) map[data.date] = data.imageUrl;
       });
       setDiaryImages(map);
     }, err => console.error("pencil listener:", err));
     return () => unsub();
   }, [user]);
 
-  // Subscribe to shared diary sketches (both users see these)
+  // Subscribe to shared diary sketches stored in couple/diary_YYYY-MM-DD
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, "pencil"), where("shared", "==", true));
-    const unsub = onSnapshot(q, snap => {
+    const unsub = onSnapshot(collection(db, "couple"), snap => {
       const map = {};
       snap.docs.forEach(d => {
         const data = d.data();
-        if (data.date && data.imageUrl) map[data.date] = data.imageUrl;
+        if (d.id.startsWith("diary_") && data.date && data.imageUrl) {
+          map[data.date] = data.imageUrl;
+        }
       });
       setSharedDiaryImages(map);
-    }, err => console.error("shared pencil listener:", err));
+    }, err => console.error("shared diary listener:", err));
     return () => unsub();
   }, [user]);
 
