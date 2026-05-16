@@ -703,7 +703,7 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
         </div>
       </div>
 
-      <div className="ov-card">
+      {viewMode !== "mine" && <div className="ov-card">
         <div className="ov-header">
           <div className="ov-title">{MONTH_NAMES[m-1]}概览</div>
           <div style={{ display:"flex", gap:6, alignItems:"center" }}>
@@ -748,7 +748,7 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
             </div>
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }
