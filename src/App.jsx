@@ -639,6 +639,8 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
     { key: "anniversary",label: "纪念日", icon: <Star size={15} />,         color: "var(--anniversary)" },
     { key: "exam",       label: "考试",  icon: <GraduationCap size={15} />, color: "var(--exam)" },
     { key: "holiday",    label: "假期",  icon: <Flag size={15} />,          color: "var(--holiday)" },
+    { key: "personal",   label: "普通",  icon: <Smile size={15} />,         color: "var(--personal)" },
+    { key: "school",     label: "学校",  icon: <GraduationCap size={15} />, color: "var(--school)" },
   ];
   const mineStatsRows = [
     { key: "exam",     label: "考试",  icon: <GraduationCap size={15} />, color: "var(--exam)" },
@@ -720,9 +722,11 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
             </button>
           </div>
         </div>
-        <div className={`ov-grid${viewMode === "mine" ? " ov-grid-5" : ""}`}>
+        <div className={`ov-grid${viewMode === "mine" ? " ov-grid-5" : " ov-grid-6"}`}>
           {(viewMode === "mine" ? mineStatsRows : statsRows).map(s => {
-            const cnt = s.key === "holiday" ? holidayCount : typeCount(s.key);
+            const cnt = s.key === "holiday" ? holidayCount
+              : s.key === "school" ? monthEvts.filter(e => e.source === "school").length
+              : typeCount(s.key);
             return (
               <div key={s.key} className="ov-stat" style={{"--stat-color": s.color}}>
                 <div className="ov-stat-icon">{s.icon}</div>
