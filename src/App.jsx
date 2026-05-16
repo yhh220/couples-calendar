@@ -635,10 +635,17 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
   };
 
   const statsRows = [
-    { key: "together", label: "约会", icon: <Heart size={16} />, color: "var(--together)" },
-    { key: "anniversary", label: "纪念日", icon: <Star size={15} />, color: "var(--anniversary)" },
-    { key: "exam", label: "考试", icon: <GraduationCap size={15} />, color: "var(--exam)" },
-    { key: "school", label: "学校", icon: <FileText size={15} />, color: "var(--school)" },
+    { key: "together",   label: "约会",  icon: <Heart size={16} />,        color: "var(--together)" },
+    { key: "anniversary",label: "纪念日", icon: <Star size={15} />,         color: "var(--anniversary)" },
+    { key: "exam",       label: "考试",  icon: <GraduationCap size={15} />, color: "var(--exam)" },
+    { key: "holiday",    label: "假期",  icon: <Flag size={15} />,          color: "var(--holiday)" },
+  ];
+  const mineStatsRows = [
+    { key: "exam",     label: "考试",  icon: <GraduationCap size={15} />, color: "var(--exam)" },
+    { key: "assign",   label: "课业",  icon: <FileText size={15} />,      color: "var(--assign)" },
+    { key: "personal", label: "普通",  icon: <Smile size={15} />,         color: "var(--personal)" },
+    { key: "social",   label: "社交",  icon: <Users size={15} />,         color: "var(--social)" },
+    { key: "holiday",  label: "节假日", icon: <Flag size={15} />,          color: "var(--holiday)" },
   ];
 
   return (
@@ -703,7 +710,7 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
         </div>
       </div>
 
-      {viewMode !== "mine" && <div className="ov-card">
+      <div className="ov-card">
         <div className="ov-header">
           <div className="ov-title">{MONTH_NAMES[m-1]}概览</div>
           <div style={{ display:"flex", gap:6, alignItems:"center" }}>
@@ -713,11 +720,9 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
             </button>
           </div>
         </div>
-        <div className="ov-grid">
-          {statsRows.map(s => {
-            const cnt = s.key === "school"
-              ? monthEvts.filter(e => e.source === "school").length + holidayCount
-              : typeCount(s.key);
+        <div className={`ov-grid${viewMode === "mine" ? " ov-grid-5" : ""}`}>
+          {(viewMode === "mine" ? mineStatsRows : statsRows).map(s => {
+            const cnt = s.key === "holiday" ? holidayCount : typeCount(s.key);
             return (
               <div key={s.key} className="ov-stat" style={{"--stat-color": s.color}}>
                 <div className="ov-stat-icon">{s.icon}</div>
@@ -729,13 +734,23 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
         </div>
         {expandStats && (
           <div className="ov-expanded-stats">
-            <div className="ov-stat-row"><span>工作</span><span>{typeCount("work")}</span></div>
-            <div className="ov-stat-row"><span>作业 / Assignment</span><span>{typeCount("assign")}</span></div>
-            <div className="ov-stat-row"><span>社交</span><span>{typeCount("social")}</span></div>
-            <div className="ov-stat-row"><span>约会</span><span>{typeCount("together")}</span></div>
-            <div className="ov-stat-row"><span>考试</span><span>{typeCount("exam")}</span></div>
-            <div className="ov-stat-row"><span>公共假期</span><span>{holidayCount}</span></div>
-            <div className="ov-stat-row total-row"><span>合计</span><span>{monthEvts.length + holidayCount}</span></div>
+            {viewMode === "mine" ? <>
+              <div className="ov-stat-row"><span>考试</span><span>{typeCount("exam")}</span></div>
+              <div className="ov-stat-row"><span>课业</span><span>{typeCount("assign")}</span></div>
+              <div className="ov-stat-row"><span>普通</span><span>{typeCount("personal")}</span></div>
+              <div className="ov-stat-row"><span>社交</span><span>{typeCount("social")}</span></div>
+              <div className="ov-stat-row"><span>节假日</span><span>{holidayCount}</span></div>
+              <div className="ov-stat-row total-row"><span>合计</span><span>{monthEvts.length + holidayCount}</span></div>
+            </> : <>
+              <div className="ov-stat-row"><span>约会</span><span>{typeCount("together")}</span></div>
+              <div className="ov-stat-row"><span>纪念日</span><span>{typeCount("anniversary")}</span></div>
+              <div className="ov-stat-row"><span>考试</span><span>{typeCount("exam")}</span></div>
+              <div className="ov-stat-row"><span>课业</span><span>{typeCount("assign")}</span></div>
+              <div className="ov-stat-row"><span>社交</span><span>{typeCount("social")}</span></div>
+              <div className="ov-stat-row"><span>工作</span><span>{typeCount("work")}</span></div>
+              <div className="ov-stat-row"><span>假期</span><span>{holidayCount}</span></div>
+              <div className="ov-stat-row total-row"><span>合计</span><span>{monthEvts.length + holidayCount}</span></div>
+            </>}
           </div>
         )}
         {upcoming && (
@@ -748,7 +763,7 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
             </div>
           </div>
         )}
-      </div>}
+      </div>
     </div>
   );
 }
@@ -889,7 +904,7 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit })
   const TYPE_ACCENT = { work:"var(--him)", assign:"var(--assign)", social:"var(--social)", together:"var(--together)", anniversary:"var(--anniversary)", exam:"var(--exam)", personal:"var(--personal)" };
   const typeList = [
     { key:"work",        label:"工作",      icon:<Briefcase size={17} /> },
-    { key:"assign",      label:"Assignment", icon:<FileText size={17} /> },
+    { key:"assign",      label:"课业",       icon:<FileText size={17} /> },
     { key:"social",      label:"社交",      icon:<Users size={17} /> },
     { key:"personal",    label:"普通",      icon:<Smile size={17} /> },
     { key:"together",    label:"约会",      icon:<Heart size={17} /> },
@@ -1007,7 +1022,7 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit })
           {!isShared && (
             <div className="f-group"><div className="toggle-row">
               <button className={`toggle${isPrivate?" on":""}`} onClick={() => setIsPrivate(!isPrivate)} />
-              <span className="toggle-lbl">🔒 私密（只有我能看到）</span>
+              <span className="toggle-lbl">🔒 只有自己能看到</span>
             </div></div>
           )}
           <div className="f-group">

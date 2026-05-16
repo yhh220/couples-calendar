@@ -498,6 +498,7 @@ em { color: var(--together); font-style: normal; }
   border-radius: 999px; padding: 3px 10px;
 }
 .ov-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.ov-grid.ov-grid-5 { grid-template-columns: repeat(5, 1fr); }
 .ov-stat {
   display: flex; flex-direction: column; align-items: center; gap: 4px;
   padding: 12px 4px;
@@ -1045,8 +1046,9 @@ select.f-input { cursor: pointer; }
   .legend { gap: 7px; font-size: 10px; }
   .legend-pip { width: 6px; height: 6px; }
 
-  /* Overview: 2×2 on mobile */
+  /* Overview: 2-col on mobile, 5-col mine collapses to 3+2 */
   .ov-grid { grid-template-columns: repeat(2, 1fr); }
+  .ov-grid.ov-grid-5 { grid-template-columns: repeat(3, 1fr); }
   .ov-stat { padding: 10px 4px; }
   .ov-stat-count { font-size: 18px; }
 
