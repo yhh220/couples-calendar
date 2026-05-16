@@ -985,10 +985,15 @@ function SearchOverlay({ events, onClose, onJumpTo }) {
   const filtered = useMemo(() => {
     if (!q.trim()) return [];
     const ql = q.toLowerCase();
-    return events.filter(e => {
+    const evResults = events.filter(e => {
       if (e.private && e.ownerEmail !== user?.email) return false;
       return e.title?.toLowerCase().includes(ql) || e.note?.toLowerCase().includes(ql);
-    }).slice(0, 40);
+    });
+    const holidayResults = MY_HOLIDAYS.filter(h => h.name.toLowerCase().includes(ql))
+      .map(h => ({ id: "holiday-" + h.date, date: h.date, title: h.name, type: "holiday" }));
+    return [...evResults, ...holidayResults]
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(0, 40);
   }, [q, events, user]);
 
   const grouped = useMemo(() => {
