@@ -36,12 +36,12 @@ const DEFAULT_ANNUAL_EVENTS = [
 ];
 
 const DEFAULT_SCHOOL_EVENTS = [
-  { id: "inti-2026-03-30", title: "Classes Begin (April 2026 Session)", date: "2026-03-30", type: "assign", schoolType: "assign", owner: "her", source: "school", locked: true },
-  { id: "inti-2026-05-18", title: "Mid Semester Break", date: "2026-05-18", endDate: "2026-05-24", type: "holiday", schoolType: "break", owner: "her", source: "school", locked: true },
-  { id: "inti-2026-07-13", title: "Study Break", date: "2026-07-13", endDate: "2026-07-15", type: "holiday", schoolType: "break", owner: "her", source: "school", locked: true },
-  { id: "inti-2026-07-16", title: "Final Examination", date: "2026-07-16", endDate: "2026-07-24", type: "exam", schoolType: "exam", owner: "her", source: "school", locked: true },
-  { id: "inti-2026-08-07", title: "Release of Results", date: "2026-08-07", endDate: "2026-08-11", type: "assign", schoolType: "results", owner: "her", source: "school", locked: true },
-  { id: "inti-2026-08-17", title: "New Semester Begins", date: "2026-08-17", type: "assign", schoolType: "assign", owner: "her", source: "school", locked: true },
+  { id: "inti-2026-03-30", title: "Classes Begin (April 2026 Session)", date: "2026-03-30", type: "assign", schoolType: "assign", owner: "her", source: "school" },
+  { id: "inti-2026-05-18", title: "Mid Semester Break", date: "2026-05-18", endDate: "2026-05-24", type: "holiday", schoolType: "break", owner: "her", source: "school" },
+  { id: "inti-2026-07-13", title: "Study Break", date: "2026-07-13", endDate: "2026-07-15", type: "holiday", schoolType: "break", owner: "her", source: "school" },
+  { id: "inti-2026-07-16", title: "Final Examination", date: "2026-07-16", endDate: "2026-07-24", type: "exam", schoolType: "exam", owner: "her", source: "school" },
+  { id: "inti-2026-08-07", title: "Release of Results", date: "2026-08-07", endDate: "2026-08-11", type: "assign", schoolType: "results", owner: "her", source: "school" },
+  { id: "inti-2026-08-17", title: "New Semester Begins", date: "2026-08-17", type: "assign", schoolType: "assign", owner: "her", source: "school" },
 ];
 
 // ─────────────────────────────────────────
@@ -627,8 +627,8 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
     return e;
   }).filter(Boolean).filter(e => (e.endDate || e.date) >= today && e.type !== "holiday").sort((a,b) => a.date.localeCompare(b.date))[0];
 
-  const canEdit = e => !e.locked && (e.ownerEmail === user?.email || e.type === "together" || e.type === "anniversary");
-  const canDelete = e => !e.locked && (e.ownerEmail === user?.email || e.type === "together" || e.type === "anniversary");
+  const canEdit = e => !e.locked && (e.source === "school" ? false : (e.ownerEmail === user?.email || e.type === "together" || e.type === "anniversary"));
+  const canDelete = e => !e.locked && (e.source === "school" || e.ownerEmail === user?.email || e.type === "together" || e.type === "anniversary");
   const ownerLabel = e => {
     if (!e.ownerEmail) return null;
     return e.ownerEmail === user?.email ? "你" : (e.ownerEmail === HIM_EMAIL ? "他" : "她");
@@ -1497,9 +1497,9 @@ function SchoolCalendarModal({ open, onClose, events, onAdd, onImport, onDelete 
                 <div className="school-row" key={e.id}>
                   <div style={{minWidth:0}}>
                     <div className="school-row-title">{e.title}</div>
-                    <div className="ev-meta">{e.date}{e.endDate ? ` – ${e.endDate}` : ""}{e.locked ? " · 默认" : ""}</div>
+                    <div className="ev-meta">{e.date}{e.endDate ? ` – ${e.endDate}` : ""}</div>
                   </div>
-                  {!e.locked && <button className="ev-del" onClick={() => onDelete(e)}><X size={13} /></button>}
+                  <button className="ev-del" onClick={() => onDelete(e)}><X size={13} /></button>
                 </div>
               ))}
             </div>
@@ -1616,7 +1616,11 @@ function AppContent() {
   // Bootstrap defaults on first login
   useEffect(() => {
     if (!user) return;
-    DEFAULT_SCHOOL_EVENTS.forEach(item => setDoc(doc(db, "school_events", item.id), item, { merge: true }).catch(console.error));
+    DEFAULT_SCHOOL_EVENTS.forEach(item =>
+      getDoc(doc(db, "school_events", item.id)).then(snap => {
+        if (!snap.exists()) setDoc(doc(db, "school_events", item.id), item).catch(console.error);
+      })
+    );
     DEFAULT_ANNUAL_EVENTS.forEach(item => setDoc(doc(db, "events", item.id), item, { merge: true }).catch(console.error));
     // Bootstrap user profile
     getDoc(doc(db, "users", user.uid)).then(snap => {
