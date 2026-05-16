@@ -1795,7 +1795,7 @@ function AppContent() {
     return () => unsub?.();
   }, [user]);
 
-  // Subscribe to this user's private diary sketches
+  // Subscribe to this user's private diary sketches (exclude any shared-flagged docs)
   useEffect(() => {
     if (!user) return;
     const q = query(collection(db, "pencil"), where("ownerEmail", "==", user.email));
@@ -1803,7 +1803,7 @@ function AppContent() {
       const map = {};
       snap.docs.forEach(d => {
         const data = d.data();
-        if (data.date && data.imageUrl) map[data.date] = data.imageUrl;
+        if (data.date && data.imageUrl && !data.shared) map[data.date] = data.imageUrl;
       });
       setDiaryImages(map);
     }, err => console.error("pencil listener:", err));
