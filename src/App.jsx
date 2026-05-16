@@ -8,7 +8,7 @@ import {
 import { auth, provider, db, storage } from "./firebase";
 import { signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from "firebase/auth";
 import {
-  collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy,
+  collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, where,
   setDoc, getDoc, updateDoc, serverTimestamp,
 } from "firebase/firestore";
 import { ref, uploadString, getDownloadURL, deleteObject } from "firebase/storage";
@@ -452,7 +452,7 @@ function MonthPicker({ curDate, onSelect, onClose }) {
 // ─────────────────────────────────────────
 // CALENDAR
 // ─────────────────────────────────────────
-function Calendar({ curDate, events, selDate, onSelectDay, onChangeMonth, onJumpTo, viewMode }) {
+function Calendar({ curDate, events, selDate, onSelectDay, onChangeMonth, onJumpTo, viewMode, diaryImages = {} }) {
   const { user, ME } = useMe();
   const y = curDate.getFullYear(), m = curDate.getMonth();
   const [showPicker, setShowPicker] = useState(false);
@@ -499,6 +499,7 @@ function Calendar({ curDate, events, selDate, onSelectDay, onChangeMonth, onJump
           if (holiday) cls += " has-holiday";
           return (
             <div key={s} className={cls} onClick={() => onSelectDay(s)}>
+              {diaryImages[s] && <img src={diaryImages[s]} className="day-sketch" alt="" />}
               <div className="day-num">{day}</div>
               <div className="day-pips">
                 {evts.slice(0, 6).map((e, i) => <div key={i} className={`pip ${evClass(e)}`} />)}
@@ -574,6 +575,7 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
   const { user, ME } = useMe();
   const [expandedId, setExpandedId] = useState(null);
   const [expandStats, setExpandStats] = useState(false);
+  const [diaryDate, setDiaryDate] = useState(null);
 
   const filterForView = evList => evList.filter(e => {
     if (viewMode === "mine") {
@@ -652,9 +654,18 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
   return (
     <div className="sidebar">
       <div className="detail-card">
-        <div className="detail-title">{selDate ? fmtDate(selDate) : "选择一个日期"}</div>
-        <div className="detail-sub">
-          {selDate ? (evts.length || holiday ? `${evts.length + (holiday?1:0)} 个活动` : "这天没有活动") : "点击日历查看当天活动"}
+        <div className="detail-hdr-row">
+          <div>
+            <div className="detail-title">{selDate ? fmtDate(selDate) : "选择一个日期"}</div>
+            <div className="detail-sub">
+              {selDate ? (evts.length || holiday ? `${evts.length + (holiday?1:0)} 个活动` : "这天没有活动") : "点击日历查看当天活动"}
+            </div>
+          </div>
+          {selDate && (
+            <button className="icon-btn diary-draw-btn" onClick={() => setDiaryDate(selDate)} title="手绘">
+              <Edit2 size={16} />
+            </button>
+          )}
         </div>
         <div className="ev-list">
           {holiday && (
@@ -772,6 +783,7 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
           </div>
         )}
       </div>
+      {diaryDate && <DiaryModal date={diaryDate} onClose={() => setDiaryDate(null)} />}
     </div>
   );
 }
@@ -1173,80 +1185,155 @@ function SearchOverlay({ events, onClose, onJumpTo }) {
 // ─────────────────────────────────────────
 // DIARY CANVAS
 // ─────────────────────────────────────────
-function DiaryModal({ onClose }) {
+const DIARY_PENS = [
+  { key:"pen",    label:"钢笔",  alpha:1.0,  widthMult:1.0,  cap:"round" },
+  { key:"brush",  label:"毛笔",  alpha:0.9,  widthMult:2.2,  cap:"round" },
+  { key:"marker", label:"马克笔",alpha:0.55, widthMult:3.5,  cap:"square" },
+  { key:"hi",     label:"荧光笔",alpha:0.38, widthMult:6.0,  cap:"square" },
+];
+const DIARY_SHAPES = ["free","line","rect","circle"];
+const DIARY_SHAPE_LABELS = { free:"自由", line:"直线", rect:"矩形", circle:"椭圆" };
+const DIARY_COLORS = [
+  "#1a1a2e","#ffffff","#e8809a","#dd4f68",
+  "#5488e8","#23a071","#c38321","#7b61ff",
+  "#f97316","#06b6d4","#84cc16","#ef4444",
+];
+const DIARY_SIZES = [2, 5, 10, 18];
+const DIARY_ERASER_SIZES = [12, 28, 52];
+
+function DiaryModal({ onClose, date }) {
   const { user } = useMe();
   const canvasRef = useRef();
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [tool, setTool] = useState("pen");
-  const [color, setColor] = useState("#2c2c3a");
+  const snapshotRef = useRef(null);
+  const startPosRef = useRef(null);
+  const isDrawingRef = useRef(false);
+  const [penKey, setPenKey] = useState("pen");
+  const [shapeMode, setShapeMode] = useState("free");
+  const [color, setColor] = useState("#1a1a2e");
+  const [sizeIdx, setSizeIdx] = useState(1);
+  const [eraserIdx, setEraserIdx] = useState(1);
+  const [isEraser, setIsEraser] = useState(false);
   const [history, setHistory] = useState([]);
   const [saving, setSaving] = useState(false);
-  const [loadingDiary, setLoadingDiary] = useState(true);
-  const COLORS = ["#2c2c3a","#e8809a","#5488e8","#23a071","#c38321","#dd4f68","#7b61ff"];
+  const [loading, setLoading] = useState(true);
+  const dateLabel = date ? fmtDate(date) : "";
 
   useEffect(() => {
-    if (!user) { setLoadingDiary(false); return; }
-    const month = toDs(new Date()).slice(0, 7);
-    getDoc(doc(db, "pencil", `${user.uid}-${month}`)).then(snap => {
+    if (!user || !date) { setLoading(false); return; }
+    setLoading(true);
+    setHistory([]);
+    isDrawingRef.current = false;
+    const canvas = canvasRef.current;
+    if (canvas) canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+    getDoc(doc(db, "pencil", `${user.uid}-${date}`)).then(snap => {
       if (snap.exists() && snap.data().imageUrl) {
         const img = new Image();
         img.crossOrigin = "anonymous";
         img.onload = () => {
-          const canvas = canvasRef.current;
-          if (!canvas) return;
-          canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-          setHistory([canvas.toDataURL()]);
-          setLoadingDiary(false);
+          const c = canvasRef.current;
+          if (!c) { setLoading(false); return; }
+          c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+          setHistory([c.toDataURL()]);
+          setLoading(false);
         };
-        img.onerror = () => setLoadingDiary(false);
+        img.onerror = () => setLoading(false);
         img.src = snap.data().imageUrl;
-      } else {
-        setLoadingDiary(false);
-      }
-    }).catch(() => setLoadingDiary(false));
-  }, [user]);
+      } else { setLoading(false); }
+    }).catch(() => setLoading(false));
+  }, [user, date]);
 
   const getPos = e => {
-    const rect = canvasRef.current.getBoundingClientRect();
-    const touch = e.touches?.[0] || e;
-    const pressure = e.pointerType === "pen" ? (e.pressure || 0.5) : 0.5;
-    return { x: (touch.clientX - rect.left) * (canvasRef.current.width / rect.width), y: (touch.clientY - rect.top) * (canvasRef.current.height / rect.height), pressure };
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const src = e.touches?.[0] || e;
+    const pressure = e.pointerType === "pen" ? Math.max(0.1, e.pressure) : 0.5;
+    return {
+      x: (src.clientX - rect.left) * (canvas.width / rect.width),
+      y: (src.clientY - rect.top) * (canvas.height / rect.height),
+      pressure,
+    };
   };
 
-  const startDraw = e => {
-    e.preventDefault();
-    const ctx = canvasRef.current.getContext("2d");
-    const pos = getPos(e);
-    ctx.beginPath();
-    ctx.moveTo(pos.x, pos.y);
-    setIsDrawing(true);
-  };
-
-  const draw = e => {
-    if (!isDrawing) return;
-    e.preventDefault();
-    const ctx = canvasRef.current.getContext("2d");
-    const pos = getPos(e);
-    ctx.lineWidth = tool === "eraser" ? 24 : Math.max(1.5, pos.pressure * 7);
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    if (tool === "eraser") {
+  const applyStyle = (ctx, pressure) => {
+    if (isEraser) {
       ctx.globalCompositeOperation = "destination-out";
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = DIARY_ERASER_SIZES[eraserIdx];
+      ctx.lineCap = "round";
       ctx.strokeStyle = "rgba(0,0,0,1)";
     } else {
+      const pen = DIARY_PENS.find(p => p.key === penKey) || DIARY_PENS[0];
       ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = pen.alpha;
+      ctx.lineWidth = Math.max(1, pressure * DIARY_SIZES[sizeIdx] * pen.widthMult);
+      ctx.lineCap = pen.cap;
+      ctx.lineJoin = "round";
       ctx.strokeStyle = color;
     }
-    ctx.lineTo(pos.x, pos.y);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(pos.x, pos.y);
   };
 
-  const endDraw = () => {
-    if (!isDrawing) return;
-    setIsDrawing(false);
-    setHistory(h => [...h, canvasRef.current.toDataURL()]);
+  const drawShape = (ctx, sx, sy, ex, ey) => {
+    ctx.beginPath();
+    if (shapeMode === "line") {
+      ctx.moveTo(sx, sy); ctx.lineTo(ex, ey);
+    } else if (shapeMode === "rect") {
+      ctx.rect(sx, sy, ex - sx, ey - sy);
+    } else if (shapeMode === "circle") {
+      const rx = Math.abs(ex - sx) / 2, ry = Math.abs(ey - sy) / 2;
+      ctx.ellipse(sx + (ex - sx) / 2, sy + (ey - sy) / 2, rx, ry, 0, 0, Math.PI * 2);
+    }
+    ctx.stroke();
+  };
+
+  const onPointerDown = e => {
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    canvas.setPointerCapture(e.pointerId);
+    const ctx = canvas.getContext("2d");
+    const pos = getPos(e);
+    applyStyle(ctx, pos.pressure);
+    if (shapeMode !== "free") {
+      snapshotRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      startPosRef.current = pos;
+    } else {
+      ctx.beginPath(); ctx.moveTo(pos.x, pos.y);
+    }
+    isDrawingRef.current = true;
+  };
+
+  const onPointerMove = e => {
+    if (!isDrawingRef.current) return;
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    const pos = getPos(e);
+    applyStyle(ctx, pos.pressure);
+    if (shapeMode !== "free" && startPosRef.current) {
+      ctx.putImageData(snapshotRef.current, 0, 0);
+      applyStyle(ctx, pos.pressure);
+      drawShape(ctx, startPosRef.current.x, startPosRef.current.y, pos.x, pos.y);
+    } else {
+      ctx.lineTo(pos.x, pos.y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(pos.x, pos.y);
+    }
+  };
+
+  const onPointerUp = e => {
+    if (!isDrawingRef.current) return;
+    isDrawingRef.current = false;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    if (shapeMode !== "free" && startPosRef.current) {
+      const pos = getPos(e);
+      applyStyle(ctx, 0.5);
+      ctx.putImageData(snapshotRef.current, 0, 0);
+      applyStyle(ctx, 0.5);
+      drawShape(ctx, startPosRef.current.x, startPosRef.current.y, pos.x, pos.y);
+      startPosRef.current = null;
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+    setHistory(h => [...h, canvas.toDataURL()]);
   };
 
   const undo = () => {
@@ -1261,48 +1348,119 @@ function DiaryModal({ onClose }) {
     }
   };
 
+  const clearCanvas = () => {
+    canvasRef.current.getContext("2d").clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    setHistory([]);
+  };
+
   const saveDiary = async () => {
-    if (!user) return;
+    if (!user || !date) return;
     setSaving(true);
     try {
       const dataUrl = canvasRef.current.toDataURL("image/png");
-      const month = toDs(new Date()).slice(0, 7);
-      const storageRef = ref(storage, `diary/${user.uid}/${month}.png`);
+      const storageRef = ref(storage, `diary/${user.uid}/${date}.png`);
       await uploadString(storageRef, dataUrl, "data_url");
-      const url = await getDownloadURL(storageRef);
-      await setDoc(doc(db, "pencil", `${user.uid}-${month}`), {
-        ownerEmail: user.email, month, imageUrl: url,
-        updatedAt: serverTimestamp(),
+      const imageUrl = await getDownloadURL(storageRef);
+      await setDoc(doc(db, "pencil", `${user.uid}-${date}`), {
+        ownerEmail: user.email, date, imageUrl, updatedAt: serverTimestamp(),
       }, { merge: true });
+      onClose();
     } finally { setSaving(false); }
   };
 
+  const cursorStyle = isEraser ? "cell" : (shapeMode !== "free" ? "crosshair" : "crosshair");
+
   return (
-    <div className="overlay open diary-overlay" onClick={e => e.target.classList.contains("diary-overlay") && onClose()}>
-      <div className="diary-modal">
-        <div className="modal-hdr">
-          <div className="modal-title">📓 {new Date().getFullYear()}年{new Date().getMonth()+1}月 日记</div>
-          <button className="modal-close" onClick={onClose}><X size={16} /></button>
+    <div className="diary-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="diary-panel">
+        {/* Header */}
+        <div className="diary-hdr">
+          <span className="diary-title">✏️ {dateLabel}</span>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <button className="pbtn" onClick={undo} disabled={history.length===0} title="撤销 (Ctrl+Z)">↩ 撤销</button>
+            <button className="pbtn" onClick={clearCanvas} title="清空画布">🗑 清空</button>
+            <button className="pbtn primary" onClick={saveDiary} disabled={saving}>{saving?"保存中…":"✓ 保存"}</button>
+            <button className="modal-close" onClick={onClose}><X size={16} /></button>
+          </div>
         </div>
+
+        {/* Toolbar */}
         <div className="diary-toolbar">
-          <button className={`pbtn${tool==="pen"?" primary":""}`} style={{minHeight:34,padding:"0 12px"}} onClick={() => setTool("pen")}>笔</button>
-          <button className={`pbtn${tool==="eraser"?" primary":""}`} style={{minHeight:34,padding:"0 12px"}} onClick={() => setTool("eraser")}>橡皮</button>
-          {COLORS.map(c => (
-            <button key={c} className={`color-dot${color===c&&tool==="pen"?" selected":""}`}
-              style={{background:c}} onClick={() => { setColor(c); setTool("pen"); }} />
-          ))}
-          <button className="pbtn" style={{minHeight:34,padding:"0 12px"}} onClick={undo} disabled={history.length===0}>撤销</button>
-          <button className="pbtn primary" style={{minHeight:34,padding:"0 12px"}} onClick={saveDiary} disabled={saving}>{saving?"保存中...":"保存"}</button>
-        </div>
-        <div style={{position:"relative"}}>
-          {loadingDiary && (
-            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"var(--card)",zIndex:2,borderRadius:"0 0 20px 20px",pointerEvents:"none"}}>
-              <span style={{color:"var(--muted)",fontSize:13}}>加载日记中...</span>
+          {/* Pen types */}
+          <div className="diary-tool-group">
+            <div className="diary-tool-group-label">画笔</div>
+            <div className="diary-tool-row">
+              {DIARY_PENS.map(p => (
+                <button key={p.key}
+                  className={`diary-chip${!isEraser && penKey===p.key?" active":""}`}
+                  onClick={() => { setPenKey(p.key); setIsEraser(false); setShapeMode("free"); }}>
+                  {p.label}
+                </button>
+              ))}
             </div>
-          )}
-          <canvas ref={canvasRef} width={680} height={460} className="diary-canvas"
-            onPointerDown={startDraw} onPointerMove={draw} onPointerUp={endDraw} onPointerLeave={endDraw}
-            style={{touchAction:"none",opacity:loadingDiary?0:1}} />
+          </div>
+
+          {/* Shape mode */}
+          <div className="diary-tool-group">
+            <div className="diary-tool-group-label">形状</div>
+            <div className="diary-tool-row">
+              {DIARY_SHAPES.map(s => (
+                <button key={s}
+                  className={`diary-chip${!isEraser && shapeMode===s?" active":""}`}
+                  onClick={() => { setShapeMode(s); setIsEraser(false); }}>
+                  {DIARY_SHAPE_LABELS[s]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Size */}
+          <div className="diary-tool-group">
+            <div className="diary-tool-group-label">粗细</div>
+            <div className="diary-tool-row" style={{alignItems:"center",gap:8}}>
+              {DIARY_SIZES.map((sz, i) => (
+                <button key={i}
+                  className={`diary-size-btn${!isEraser && sizeIdx===i?" active":""}`}
+                  onClick={() => { setSizeIdx(i); setIsEraser(false); }}
+                  style={{width: sz*2.8+10, height: sz*2.8+10}} />
+              ))}
+            </div>
+          </div>
+
+          {/* Eraser */}
+          <div className="diary-tool-group">
+            <div className="diary-tool-group-label">橡皮</div>
+            <div className="diary-tool-row" style={{alignItems:"center",gap:8}}>
+              {DIARY_ERASER_SIZES.map((sz, i) => (
+                <button key={i}
+                  className={`diary-size-btn${isEraser && eraserIdx===i?" active":""}`}
+                  onClick={() => { setEraserIdx(i); setIsEraser(true); }}
+                  style={{width: [16,24,36][i], height: [16,24,36][i]}} />
+              ))}
+            </div>
+          </div>
+
+          {/* Colors */}
+          <div className="diary-tool-group diary-colors-group">
+            <div className="diary-tool-group-label">颜色</div>
+            <div className="diary-color-grid">
+              {DIARY_COLORS.map(c => (
+                <button key={c}
+                  className={`diary-color-btn${!isEraser && color===c?" active":""}`}
+                  style={{background:c, outline: c==="#ffffff"?"1px solid var(--line)":"none"}}
+                  onClick={() => { setColor(c); setIsEraser(false); }} />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Canvas */}
+        <div className="diary-canvas-wrap">
+          {loading && <div className="diary-loading"><span>加载中…</span></div>}
+          <canvas ref={canvasRef} width={1200} height={700} className="diary-canvas"
+            onPointerDown={onPointerDown} onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp} onPointerLeave={onPointerUp}
+            style={{touchAction:"none", cursor: cursorStyle, opacity: loading ? 0 : 1}} />
         </div>
       </div>
     </div>
@@ -1319,7 +1477,6 @@ function ProfileDrawer({ open, onClose, onLogout }) {
   const [nameVal, setNameVal] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const [diaryOpen, setDiaryOpen] = useState(false);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -1410,13 +1567,6 @@ function ProfileDrawer({ open, onClose, onLogout }) {
           <div className="profile-email">{user?.email}</div>
         </div>
 
-        {/* Diary */}
-        <div className="profile-section">
-          <button className="btn-submit" style={{background:"var(--her)",marginBottom:0}} onClick={() => setDiaryOpen(true)}>
-            <BookOpen size={15} /> 打开日记本
-          </button>
-        </div>
-
         {/* Logout */}
         <div className="profile-section" style={{paddingBottom:0}}>
           <button className="btn-submit profile-logout-btn" onClick={onLogout}>
@@ -1424,7 +1574,6 @@ function ProfileDrawer({ open, onClose, onLogout }) {
           </button>
         </div>
       </div>
-      {diaryOpen && <DiaryModal onClose={() => setDiaryOpen(false)} />}
     </div>
   );
 }
@@ -1576,6 +1725,7 @@ function AppContent() {
   const detailRef = useRef();
   const [anniversaryDate, setAnniversaryDate] = useState("2025-01-01");
   const [maintenance, setMaintenance] = useState(false);
+  const [diaryImages, setDiaryImages] = useState({});
 
   const ME = user?.email === HIM_EMAIL ? "him" : "her";
   const PARTNER = ME === "him" ? "her" : "him";
@@ -1623,6 +1773,21 @@ function AppContent() {
     };
     subscribe();
     return () => unsub?.();
+  }, [user]);
+
+  // Subscribe to this user's diary sketches
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, "pencil"), where("ownerEmail", "==", user.email));
+    const unsub = onSnapshot(q, snap => {
+      const map = {};
+      snap.docs.forEach(d => {
+        const data = d.data();
+        if (data.date && data.imageUrl) map[data.date] = data.imageUrl;
+      });
+      setDiaryImages(map);
+    }, err => console.error("pencil listener:", err));
+    return () => unsub();
   }, [user]);
 
   // Listen to couple/shared for anniversary date and maintenance flag
@@ -1810,7 +1975,7 @@ function AppContent() {
             onSelectDay={setSelDate}
             onChangeMonth={d => setCurDate(new Date(curDate.getFullYear(), curDate.getMonth()+d, 1))}
             onJumpTo={d => setCurDate(d)}
-            viewMode={viewMode} />
+            viewMode={viewMode} diaryImages={diaryImages} />
           <div ref={detailRef}>
             <Sidebar selDate={selDate} events={allEvents} curDate={curDate}
               viewMode={viewMode}
