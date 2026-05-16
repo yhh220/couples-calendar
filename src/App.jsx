@@ -109,8 +109,7 @@ function relativeTime(timestamp) {
 function evClass(e) {
   if (e.source === "school") {
     if (e.type === "exam") return "exam";
-    if (e.type === "holiday") return "holiday";
-    return "school";
+    return "school"; // breaks, results, assign all → blue
   }
   if (e.type === "anniversary") return "anniversary";
   if (e.type === "together") return "together";
@@ -510,7 +509,7 @@ function Calendar({ curDate, events, selDate, onSelectDay, onChangeMonth, onJump
         })}
       </div>
       <div className="legend">
-        {[["personal","普通"],["school","学校"],["together","两人"],["anniversary","纪念日"],["holiday","节假日"],["exam","考试"]].map(([cls,lbl]) => (
+        {[["personal","特别事件"],["school","学校"],["together","两人"],["anniversary","纪念日"],["holiday","节假日"],["exam","考试"]].map(([cls,lbl]) => (
           <div key={cls} className="legend-item"><div className="legend-pip" style={{background:`var(--${cls})`}} />{lbl}</div>
         ))}
       </div>
@@ -645,9 +644,9 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
   const mineStatsRows = [
     { key: "exam",     label: "考试",  icon: <GraduationCap size={15} />, color: "var(--exam)" },
     { key: "assign",   label: "课业",  icon: <FileText size={15} />,      color: "var(--assign)" },
-    { key: "personal", label: "普通",  icon: <Smile size={15} />,         color: "var(--personal)" },
-    { key: "social",   label: "社交",  icon: <Users size={15} />,         color: "var(--social)" },
-    { key: "holiday",  label: "节假日", icon: <Flag size={15} />,          color: "var(--holiday)" },
+    { key: "personal", label: "特别事件", icon: <Smile size={15} />,      color: "var(--personal)" },
+    { key: "social",   label: "社交",    icon: <Users size={15} />,        color: "var(--social)" },
+    { key: "holiday",  label: "节假日",  icon: <Flag size={15} />,         color: "var(--holiday)" },
   ];
 
   return (
@@ -684,6 +683,11 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
                 <div className="ev-body" onClick={() => setExpandedId(isExpanded ? null : (e.id + e.date))}>
                   <div className="ev-name-row">
                     <div className="ev-name">{e.title}</div>
+                    {(e.type === "assign" || e.type === "exam" || e.type === "work") && e.ownerEmail && (
+                      <span className={`owner-tag ${e.ownerEmail === HIM_EMAIL ? "him" : "her"}`}>
+                        {e.ownerEmail === HIM_EMAIL ? "YH" : "SY"}
+                      </span>
+                    )}
                     {e.private && <Lock size={10} style={{ color: "var(--muted)", flexShrink: 0 }} />}
                   </div>
                   <div className="ev-meta">
@@ -741,7 +745,7 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
             {viewMode === "mine" ? <>
               <div className="ov-stat-row"><span>考试</span><span>{typeCount("exam")}</span></div>
               <div className="ov-stat-row"><span>课业</span><span>{typeCount("assign")}</span></div>
-              <div className="ov-stat-row"><span>普通</span><span>{typeCount("personal")}</span></div>
+              <div className="ov-stat-row"><span>特别事件</span><span>{typeCount("personal")}</span></div>
               <div className="ov-stat-row"><span>社交</span><span>{typeCount("social")}</span></div>
               <div className="ov-stat-row"><span>节假日</span><span>{holidayCount}</span></div>
               <div className="ov-stat-row total-row"><span>合计</span><span>{monthEvts.length + holidayCount}</span></div>
@@ -908,18 +912,19 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, v
   const TYPE_ACCENT = { work:"var(--him)", assign:"var(--assign)", social:"var(--social)", together:"var(--together)", anniversary:"var(--anniversary)", exam:"var(--exam)", personal:"var(--personal)" };
   const typeList = viewMode === "mine"
     ? [
-        { key:"personal",    label:"普通",   icon:<Smile size={17} /> },
-        { key:"social",      label:"社交",   icon:<Users size={17} /> },
-        { key:"assign",      label:"课业",   icon:<FileText size={17} /> },
-        { key:"exam",        label:"考试",   icon:<GraduationCap size={17} /> },
-        { key:"work",        label:"工作",   icon:<Briefcase size={17} /> },
+        { key:"personal",    label:"特别事件", icon:<Smile size={17} /> },
+        { key:"social",      label:"社交",     icon:<Users size={17} /> },
+        { key:"assign",      label:"课业",     icon:<FileText size={17} /> },
+        { key:"exam",        label:"考试",     icon:<GraduationCap size={17} /> },
+        { key:"work",        label:"工作",     icon:<Briefcase size={17} /> },
       ]
     : [
-        { key:"together",    label:"约会",   icon:<Heart size={17} /> },
-        { key:"anniversary", label:"纪念日", icon:<Star size={17} /> },
-        { key:"exam",        label:"考试",   icon:<GraduationCap size={17} /> },
-        { key:"assign",      label:"课业",   icon:<FileText size={17} /> },
-        { key:"work",        label:"工作",   icon:<Briefcase size={17} /> },
+        { key:"together",    label:"约会",     icon:<Heart size={17} /> },
+        { key:"anniversary", label:"纪念日",   icon:<Star size={17} /> },
+        { key:"personal",    label:"特别事件", icon:<Smile size={17} /> },
+        { key:"exam",        label:"考试",     icon:<GraduationCap size={17} /> },
+        { key:"assign",      label:"课业",     icon:<FileText size={17} /> },
+        { key:"work",        label:"工作",     icon:<Briefcase size={17} /> },
       ];
 
   return (

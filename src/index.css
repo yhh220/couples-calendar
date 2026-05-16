@@ -454,6 +454,9 @@ em { color: var(--together); font-style: normal; }
 .ev-body { min-width: 0; flex: 1; cursor: pointer; }
 .ev-name-row { display: flex; align-items: center; gap: 6px; }
 .ev-name { font-weight: 700; font-size: 14px; overflow-wrap: anywhere; flex: 1; line-height: 1.3; }
+.owner-tag { font-size: 10px; font-weight: 800; letter-spacing: .04em; padding: 1px 5px; border-radius: 6px; flex-shrink: 0; line-height: 1.6; }
+.owner-tag.him { background: rgba(84,136,232,.15); color: var(--him); }
+.owner-tag.her { background: rgba(232,128,154,.15); color: var(--her); }
 .ev-meta, .ev-footer { color: var(--muted); }
 .ev-meta { font-size: 12px; margin-top: 2px; }
 .ev-footer { font-size: 10px; margin-top: 3px; }
