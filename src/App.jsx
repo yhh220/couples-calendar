@@ -3,7 +3,7 @@ import {
   Heart, Sun, Moon, Plus, ChevronLeft, ChevronRight, Check, X,
   LogOut, CalendarIcon, Flag, Star, Briefcase, FileText,
   Users, ImageIcon, Cake, Search, User, Lock, MessageCircle,
-  Edit2, BookOpen, WifiOff, GraduationCap, ChevronDown, ChevronUp, Trash2,
+  Edit2, BookOpen, WifiOff, GraduationCap, ChevronDown, ChevronUp, Trash2, Smile,
 } from "lucide-react";
 import { auth, provider, db, storage } from "./firebase";
 import { signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from "firebase/auth";
@@ -22,7 +22,7 @@ const HIM_EMAIL = "chinyihang06@gmail.com";
 const HER_EMAIL = "shinyutoo@gmail.com";
 const ALLOWED_EMAILS = new Set([HIM_EMAIL, HER_EMAIL]);
 const LIMITS = { title: 90, note: 400, imageBytes: 4 * 1024 * 1024, schoolRangeDays: 180 };
-const ALLOWED_TYPES = new Set(["work", "assign", "social", "together", "anniversary", "exam"]);
+const ALLOWED_TYPES = new Set(["work", "assign", "social", "together", "anniversary", "exam", "personal"]);
 const ALLOWED_SCHOOL_TYPES = new Set(["exam", "break", "results", "assign"]);
 const ALLOWED_OWNERS = new Set(["him", "her"]);
 const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
@@ -116,6 +116,7 @@ function evClass(e) {
   if (e.type === "together") return "together";
   if (e.type === "holiday") return "holiday";
   if (e.type === "exam") return "exam";
+  if (e.type === "personal") return "personal";
   return e.owner || "him";
 }
 
@@ -255,7 +256,7 @@ const GoogleLogo = () => (
 const TYPE_ICONS = {
   work: <Briefcase size={16} />, assign: <FileText size={16} />, social: <Users size={16} />,
   together: <Heart size={16} />, anniversary: <Star size={16} />, holiday: <Flag size={16} />,
-  school: <FileText size={16} />, exam: <GraduationCap size={16} />,
+  school: <FileText size={16} />, exam: <GraduationCap size={16} />, personal: <Smile size={16} />,
 };
 
 // ─────────────────────────────────────────
@@ -509,7 +510,7 @@ function Calendar({ curDate, events, selDate, onSelectDay, onChangeMonth, onJump
         })}
       </div>
       <div className="legend">
-        {[["school","学校"],["together","两人"],["anniversary","纪念日"],["holiday","节假日"],["exam","考试"]].map(([cls,lbl]) => (
+        {[["personal","普通"],["school","学校"],["together","两人"],["anniversary","纪念日"],["holiday","节假日"],["exam","考试"]].map(([cls,lbl]) => (
           <div key={cls} className="legend-item"><div className="legend-pip" style={{background:`var(--${cls})`}} />{lbl}</div>
         ))}
       </div>
@@ -885,11 +886,12 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit })
 
   if (!open) return null;
   const isShared = type === "together" || type === "anniversary";
-  const TYPE_ACCENT = { work:"var(--him)", assign:"var(--assign)", social:"var(--social)", together:"var(--together)", anniversary:"var(--anniversary)", exam:"var(--exam)" };
+  const TYPE_ACCENT = { work:"var(--him)", assign:"var(--assign)", social:"var(--social)", together:"var(--together)", anniversary:"var(--anniversary)", exam:"var(--exam)", personal:"var(--personal)" };
   const typeList = [
     { key:"work",        label:"工作",      icon:<Briefcase size={17} /> },
     { key:"assign",      label:"Assignment", icon:<FileText size={17} /> },
     { key:"social",      label:"社交",      icon:<Users size={17} /> },
+    { key:"personal",    label:"普通",      icon:<Smile size={17} /> },
     { key:"together",    label:"约会",      icon:<Heart size={17} /> },
     { key:"anniversary", label:"纪念日",    icon:<Star size={17} /> },
     { key:"exam",        label:"考试",      icon:<GraduationCap size={17} /> },

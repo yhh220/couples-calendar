@@ -25,6 +25,7 @@
   --work: var(--him);
   --assign: #7b61ff;
   --social: #11a0a8;
+  --personal: #8fad88;
   --radius-sm: 10px;
   --radius-md: 16px;
   --radius-lg: 24px;
@@ -374,6 +375,7 @@ em { color: var(--together); font-style: normal; }
 .pip.anniversary { background: var(--anniversary); }
 .pip.holiday { background: var(--holiday); }
 .pip.exam { background: var(--exam); }
+.pip.personal { background: var(--personal); }
 
 .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 14px; color: var(--muted); font-size: 12px; }
 .legend-item { display: inline-flex; align-items: center; gap: 5px; }
@@ -421,6 +423,7 @@ em { color: var(--together); font-style: normal; }
 .ev-item.anniversary .ev-icon { color: var(--anniversary); }
 .ev-item.exam .ev-icon { color: var(--exam); }
 .ev-item.holiday .ev-icon { color: var(--holiday); }
+.ev-item.personal .ev-icon { color: var(--personal); }
 
 /* left accent bar per type */
 .ev-item::before {
@@ -437,6 +440,7 @@ em { color: var(--together); font-style: normal; }
 .ev-item.anniversary::before { background: var(--anniversary); }
 .ev-item.exam::before { background: var(--exam); }
 .ev-item.holiday::before { background: var(--holiday); }
+.ev-item.personal::before { background: var(--personal); }
 
 .ev-body { min-width: 0; flex: 1; cursor: pointer; }
 .ev-name-row { display: flex; align-items: center; gap: 6px; }
@@ -628,6 +632,7 @@ select.f-input { cursor: pointer; }
 .type-card.active.together    { background: var(--together);    box-shadow: 0 6px 18px rgba(221,79,104,.32); }
 .type-card.active.anniversary { background: var(--anniversary); box-shadow: 0 6px 18px rgba(195,131,33,.32); }
 .type-card.active.exam        { background: var(--exam);        box-shadow: 0 6px 18px rgba(184,92,122,.32); }
+.type-card.active.personal    { background: var(--personal);    box-shadow: 0 6px 18px rgba(143,173,136,.32); }
 
 /* ─────────────────────────────────────────
    WEEKDAY PILLS
