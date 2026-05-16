@@ -471,7 +471,8 @@ function Calendar({ curDate, events, selDate, onSelectDay, onChangeMonth, onJump
     const allEvts = getEventsForDs(s, events);
     const evts = allEvts.filter(e => {
       if (viewMode === "mine") {
-        if (e.type === "holiday" || e.type === "together" || e.type === "anniversary" || e.source === "school") return true;
+        if (e.type === "holiday" || e.type === "anniversary" || e.source === "school") return true;
+        if (e.type === "together") return false;
         return e.owner === ME || e.ownerEmail === user?.email;
       }
       if (e.private && e.ownerEmail !== user?.email) return false;
@@ -576,7 +577,8 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
 
   const filterForView = evList => evList.filter(e => {
     if (viewMode === "mine") {
-      if (e.type === "holiday" || e.type === "together" || e.type === "anniversary" || e.source === "school") return true;
+      if (e.type === "holiday" || e.type === "anniversary" || e.source === "school") return true;
+      if (e.type === "together") return false;
       return e.owner === ME || e.ownerEmail === user?.email;
     }
     if (e.private && e.ownerEmail !== user?.email) return false;
