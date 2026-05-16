@@ -1218,6 +1218,12 @@ function DiaryModal({ onClose, date }) {
   const [loading, setLoading] = useState(true);
   const dateLabel = date ? fmtDate(date) : "";
 
+  // Hide FAB while diary is open
+  useEffect(() => {
+    document.body.classList.add("diary-open");
+    return () => document.body.classList.remove("diary-open");
+  }, []);
+
   useEffect(() => {
     if (!user || !date) { setLoading(false); return; }
     setLoading(true);
@@ -1357,8 +1363,8 @@ function DiaryModal({ onClose, date }) {
     if (!user || !date) return;
     setSaving(true);
     try {
-      const dataUrl = canvasRef.current.toDataURL("image/png");
-      const storageRef = ref(storage, `diary/${user.uid}/${date}.png`);
+      const dataUrl = canvasRef.current.toDataURL("image/webp", 0.88);
+      const storageRef = ref(storage, `diary/${user.uid}/${date}.webp`);
       await uploadString(storageRef, dataUrl, "data_url");
       const imageUrl = await getDownloadURL(storageRef);
       await setDoc(doc(db, "pencil", `${user.uid}-${date}`), {
@@ -1457,7 +1463,7 @@ function DiaryModal({ onClose, date }) {
         {/* Canvas */}
         <div className="diary-canvas-wrap">
           {loading && <div className="diary-loading"><span>加载中…</span></div>}
-          <canvas ref={canvasRef} width={1200} height={700} className="diary-canvas"
+          <canvas ref={canvasRef} width={800} height={480} className="diary-canvas"
             onPointerDown={onPointerDown} onPointerMove={onPointerMove}
             onPointerUp={onPointerUp} onPointerLeave={onPointerUp}
             style={{touchAction:"none", cursor: cursorStyle, opacity: loading ? 0 : 1}} />
