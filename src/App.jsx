@@ -772,16 +772,6 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
             </>}
           </div>
         )}
-        {upcoming && (
-          <div className="ov-next">
-            <div className="ov-next-label">本月下一个</div>
-            <div className="ov-next-row">
-              <div className={`ov-next-dot ${evClass(upcoming)}`} />
-              <div className="ov-next-name">{upcoming.title}</div>
-              <div className="ov-next-date">{fmtDate(upcoming.date)}</div>
-            </div>
-          </div>
-        )}
       </div>
       {diaryDate && <DiaryModal date={diaryDate} onClose={() => setDiaryDate(null)} />}
     </div>
