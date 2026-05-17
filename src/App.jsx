@@ -6,7 +6,7 @@ import {
   Users, ImageIcon, Cake, Search, User, Lock, MessageCircle,
   Edit2, BookOpen, WifiOff, GraduationCap, ChevronDown, ChevronUp, Trash2, Smile, Camera, PenLine, Pencil,
 } from "lucide-react";
-import { auth, provider, db, storage } from "./firebase";
+import { auth, provider, db, storage, messaging, onMessage, registerFcmToken } from "./firebase";
 import { signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from "firebase/auth";
 import {
   collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, where,
@@ -2343,6 +2343,9 @@ function AppContent() {
   const [sharedStickerData, setSharedStickerData] = useState({});
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [installDismissed, setInstallDismissed] = useState(storageGet("installDismissed") === "1");
+  const [notifPermission, setNotifPermission] = useState(() => (typeof Notification !== "undefined" ? Notification.permission : "denied"));
+  const [notifDismissed, setNotifDismissed] = useState(storageGet("notifDismissed") === "1");
+  const [toast, setToast] = useState(null);
 
   const ME = user?.email === HIM_EMAIL ? "him" : "her";
   const PARTNER = ME === "him" ? "her" : "him";
@@ -2365,6 +2368,23 @@ function AppContent() {
     return () => window.removeEventListener("beforeinstallprompt", handler);
   }, []);
 
+  // Auto-register FCM token if permission already granted on load
+  useEffect(() => {
+    if (!user || !messaging || Notification?.permission !== "granted") return;
+    registerAndSaveToken(user);
+  }, [user]);
+
+  // Foreground FCM message → show toast
+  useEffect(() => {
+    if (!messaging) return;
+    return onMessage(messaging, payload => {
+      const { title, body } = payload.notification ?? {};
+      setToast({ title: title ?? "", body: body ?? "" });
+      const tid = setTimeout(() => setToast(null), 4000);
+      return () => clearTimeout(tid);
+    });
+  }, []);
+
   // Lightbox keyboard navigation
   useEffect(() => {
     if (!lightbox) return;
@@ -2383,6 +2403,8 @@ function AppContent() {
         setNoPermission(true); setUser(null); setAuthLoading(false); return;
       }
       setNoPermission(false); setUser(u); setAuthLoading(false);
+      // Persist email so Cloud Functions can look up FCM token by email
+      if (u) setDoc(doc(db, "users", u.uid), { email: u.email }, { merge: true }).catch(() => {});
     });
     return unsub;
   }, []);
@@ -2497,6 +2519,21 @@ function AppContent() {
       }
     });
   }, [user]);
+
+  const registerAndSaveToken = async (u) => {
+    const vapidKey = import.meta.env.VITE_VAPID_KEY;
+    if (!vapidKey) return;
+    const token = await registerFcmToken(vapidKey);
+    if (!token || !u) return;
+    await setDoc(doc(db, "users", u.uid), { fcmToken: token }, { merge: true });
+  };
+
+  const requestNotifPermission = async () => {
+    if (typeof Notification === "undefined") return;
+    const result = await Notification.requestPermission();
+    setNotifPermission(result);
+    if (result === "granted" && user) registerAndSaveToken(user);
+  };
 
   const handleLogin = async () => {
     try {
@@ -2631,6 +2668,19 @@ function AppContent() {
   return (
     <UserCtx.Provider value={{ user, ME, PARTNER }}>
       <OfflineBanner />
+      {toast && (
+        <div className="notif-toast">
+          <div className="notif-toast-title">{toast.title}</div>
+          {toast.body && <div className="notif-toast-body">{toast.body}</div>}
+        </div>
+      )}
+      {messaging && notifPermission === "default" && !notifDismissed && (
+        <div className="notif-prompt-banner">
+          <span>🔔 开启通知，及时收到活动提醒</span>
+          <button className="notif-prompt-btn accent" onClick={requestNotifPermission}>开启</button>
+          <button className="notif-prompt-btn" onClick={() => { setNotifDismissed(true); storageSet("notifDismissed", "1"); }}>不了</button>
+        </div>
+      )}
       {deferredPrompt && !installDismissed && (
         <div style={{
           position: "fixed", bottom: 88, left: 16, right: 16, zIndex: 150,
