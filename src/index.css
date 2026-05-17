@@ -804,7 +804,24 @@ select.f-input { cursor: pointer; }
    LIGHTBOX
 ───────────────────────────────────────── */
 .lightbox { z-index: 100; cursor: zoom-out; }
-.lightbox img { max-width: min(920px, 94vw); max-height: 88dvh; border-radius: 18px; box-shadow: var(--shadow); }
+.lightbox img { max-width: min(920px, 94vw); max-height: 88dvh; border-radius: 18px; box-shadow: var(--shadow); cursor: default; }
+.lightbox-prev, .lightbox-next {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: 48px; height: 48px; border-radius: 50%;
+  background: rgba(0,0,0,.52); color: #fff;
+  font-size: 30px; font-weight: 300; line-height: 1;
+  display: grid; place-items: center;
+  border: none; cursor: pointer;
+  transition: background .15s; z-index: 1;
+}
+.lightbox-prev:hover, .lightbox-next:hover { background: rgba(0,0,0,.76); }
+.lightbox-prev { left: max(16px, env(safe-area-inset-left, 16px)); }
+.lightbox-next { right: max(16px, env(safe-area-inset-right, 16px)); }
+.lightbox-counter {
+  position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: rgba(0,0,0,.55); color: #fff;
+  font-size: 13px; font-weight: 700; padding: 5px 14px; border-radius: 999px;
+}
 
 /* ─────────────────────────────────────────
    LOGIN SCREEN
@@ -1410,4 +1427,170 @@ html.theme-ready :is(
     .timer-banner, .cd-card, .ev-item, .modal,
     .sticker-panel, .photo-strip, .view-toggle, .icon-btn, .fab, .sidebar
   ) { transition: none; }
+}
+
+/* ─────────────────────────────────────────
+   CROP MODAL
+───────────────────────────────────────── */
+.crop-modal { width: min(520px, 100%); }
+.crop-container {
+  position: relative;
+  width: 100%; height: 300px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: #111;
+  margin-bottom: 4px;
+}
+.crop-aspect-btns { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+.crop-aspect-btn {
+  border: 1px solid var(--line);
+  background: var(--surface-strong);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 4px 14px;
+  font-size: 12px; font-weight: 700;
+  cursor: pointer; transition: all .14s;
+}
+.crop-aspect-btn.active { background: var(--together); color: white; border-color: transparent; }
+
+/* ─────────────────────────────────────────
+   DIARY TEXTAREA
+───────────────────────────────────────── */
+.diary-textarea {
+  width: 100%; min-height: 200px; resize: vertical;
+  border: 1px solid var(--line);
+  background: var(--surface-strong);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  padding: 12px 13px; outline: none;
+  font: inherit; font-size: 14px; line-height: 1.6;
+  transition: border-color .15s, box-shadow .15s;
+}
+.diary-textarea:focus { border-color: var(--together); box-shadow: 0 0 0 3px rgba(221,79,104,.11); }
+
+/* ─────────────────────────────────────────
+   CALENDAR VIEW TOGGLE (月/周)
+───────────────────────────────────────── */
+.cal-view-pills {
+  display: flex; background: var(--surface-strong);
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: 2px; gap: 2px;
+}
+.cal-view-pill {
+  border: 0; background: transparent; color: var(--muted);
+  font-size: 12px; font-weight: 700;
+  padding: 4px 10px; border-radius: 999px;
+  cursor: pointer; transition: all .15s;
+}
+.cal-view-pill.active { background: var(--together); color: white; }
+
+/* ─────────────────────────────────────────
+   WEEK VIEW
+───────────────────────────────────────── */
+.week-grid {
+  display: grid; grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px; margin-top: 8px;
+}
+.week-day-col {
+  border: 1px solid var(--line); border-radius: 12px;
+  background: var(--surface-strong);
+  padding: 8px 5px; cursor: pointer; min-height: 120px;
+  transition: transform .14s, border-color .14s;
+}
+.week-day-col:hover { border-color: rgba(221,79,104,.4); transform: translateY(-1px); }
+.week-day-col.today { border-color: var(--together); }
+.week-day-col.selected { background: rgba(221,79,104,.07); border-color: rgba(221,79,104,.35); }
+.week-day-hdr { display: flex; flex-direction: column; align-items: center; gap: 2px; margin-bottom: 6px; }
+.week-day-name { font-size: 10px; font-weight: 700; color: var(--muted); }
+.week-day-num {
+  font-size: 13px; font-weight: 800; line-height: 1;
+  width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%;
+}
+.week-day-col.today .week-day-num { background: var(--together); color: white; }
+.week-ev-pill {
+  display: block; font-size: 10px; font-weight: 700;
+  padding: 2px 5px; border-radius: 5px; margin-bottom: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: rgba(84,136,232,.12); color: var(--him);
+}
+.week-ev-pill.her { background: rgba(232,128,154,.12); color: var(--her); }
+.week-ev-pill.together { background: rgba(221,79,104,.12); color: var(--together); }
+.week-ev-pill.anniversary { background: rgba(195,131,33,.12); color: var(--anniversary); }
+.week-ev-pill.holiday { background: rgba(35,160,113,.12); color: var(--holiday); }
+.week-ev-pill.exam { background: var(--exam-light); color: var(--exam); }
+.week-ev-pill.school { background: rgba(107,155,210,.12); color: var(--school); }
+.week-ev-pill.personal { background: rgba(143,173,136,.12); color: var(--personal); }
+.week-ev-more { font-size: 10px; color: var(--muted); font-weight: 600; padding: 1px 5px; }
+
+@media (max-width: 600px) {
+  .week-day-col { min-height: 86px; padding: 6px 3px; border-radius: 10px; }
+  .week-day-name { font-size: 9px; }
+  .week-day-num { font-size: 11px; width: 22px; height: 22px; }
+  .week-ev-pill { font-size: 9px; padding: 1px 3px; }
+}
+
+/* ─────────────────────────────────────────
+   DRAWING MODAL
+───────────────────────────────────────── */
+.drawing-panel {
+  background: var(--surface);
+  border-radius: var(--radius) var(--radius) 0 0;
+  width: 100%; max-width: 680px;
+  max-height: 88dvh;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 -4px 32px rgba(0,0,0,.18);
+}
+.drawing-canvas-wrap {
+  position: relative; flex: 1; min-height: 0;
+  background: #ffffff; overflow: hidden;
+  touch-action: none;
+}
+.drawing-canvas {
+  position: absolute; top: 0; left: 0;
+  display: block;
+}
+.diary-loading {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-size: 14px; color: var(--muted); background: rgba(255,255,255,.8); z-index: 10;
+}
+.draw-toolbar {
+  padding: 8px 12px 10px;
+  border-top: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 8px;
+  background: var(--surface);
+}
+.draw-tool-row {
+  display: flex; align-items: center; gap: 6px;
+}
+.draw-tool-btn {
+  min-width: 32px; height: 32px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--surface-strong);
+  color: var(--text); font-size: 14px; cursor: pointer;
+  display: grid; place-items: center; padding: 0 8px;
+  transition: background .12s, border-color .12s, color .12s;
+  flex-shrink: 0;
+}
+.draw-tool-btn:hover:not(:disabled) { border-color: var(--together); color: var(--together); }
+.draw-tool-btn.active { background: var(--together); border-color: var(--together); color: #fff; }
+.draw-tool-btn:disabled { opacity: .35; cursor: default; }
+.draw-width-row {
+  display: flex; align-items: center; gap: 8px;
+  flex: 1; min-width: 0;
+}
+.draw-palette {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+}
+.draw-color-swatch {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 2px solid transparent; cursor: pointer; padding: 0;
+  flex-shrink: 0; transition: transform .12s, border-color .12s;
+}
+.draw-color-swatch:hover { transform: scale(1.18); }
+.draw-color-swatch.active { border-color: var(--together); transform: scale(1.15); }
+
+@media (max-width: 600px) {
+  .drawing-panel { max-height: 91dvh; border-radius: 18px 18px 0 0; }
+  .draw-tool-btn { min-width: 28px; height: 28px; font-size: 13px; }
+  .draw-color-swatch { width: 20px; height: 20px; }
 }

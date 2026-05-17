@@ -1,9 +1,10 @@
-import { Component, useState, useEffect, useRef, useMemo, createContext, useContext } from "react";
+import { Component, useState, useEffect, useRef, useMemo, useCallback, createContext, useContext } from "react";
+import Cropper from "react-easy-crop";
 import {
   Heart, Sun, Moon, Plus, ChevronLeft, ChevronRight, Check, X,
   LogOut, CalendarIcon, Flag, Star, Briefcase, FileText,
   Users, ImageIcon, Cake, Search, User, Lock, MessageCircle,
-  Edit2, BookOpen, WifiOff, GraduationCap, ChevronDown, ChevronUp, Trash2, Smile, Camera,
+  Edit2, BookOpen, WifiOff, GraduationCap, ChevronDown, ChevronUp, Trash2, Smile, Camera, PenLine, Pencil,
 } from "lucide-react";
 import { auth, provider, db, storage } from "./firebase";
 import { signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from "firebase/auth";
@@ -453,14 +454,26 @@ function MonthPicker({ curDate, onSelect, onClose }) {
 // ─────────────────────────────────────────
 // CALENDAR
 // ─────────────────────────────────────────
-function Calendar({ curDate, events, selDate, onSelectDay, onChangeMonth, onJumpTo, viewMode, stickerData = {} }) {
+function Calendar({ curDate, events, selDate, onSelectDay, onChangeMonth, onJumpTo, viewMode, calView = "month", onCalViewChange, stickerData = {} }) {
   const { user, ME } = useMe();
   const y = curDate.getFullYear(), m = curDate.getMonth();
   const [showPicker, setShowPicker] = useState(false);
+  const today = todayDs();
+
+  const filterEvts = (allEvts) => allEvts.filter(e => {
+    if (viewMode === "mine") {
+      if (e.type === "holiday" || e.type === "anniversary" || e.source === "school") return true;
+      if (e.type === "together") return false;
+      return e.owner === ME || e.ownerEmail === user?.email;
+    }
+    if (e.private && e.ownerEmail !== user?.email) return false;
+    return true;
+  });
+
+  // Month view cells
   const first = new Date(y,m,1).getDay();
   const dim = new Date(y,m+1,0).getDate();
   const dipm = new Date(y,m,0).getDate();
-  const today = todayDs();
   const total = Math.ceil((first+dim)/7)*7;
   const cells = [];
   for (let i = 0; i < total; i++) {
@@ -469,55 +482,94 @@ function Calendar({ curDate, events, selDate, onSelectDay, onChangeMonth, onJump
     else if (i >= first+dim) { day = i-first-dim+1; off = 1; }
     else day = i-first+1;
     const s = toDs(new Date(y, m+off, day));
-    const allEvts = getEventsForDs(s, events);
-    const evts = allEvts.filter(e => {
-      if (viewMode === "mine") {
-        if (e.type === "holiday" || e.type === "anniversary" || e.source === "school") return true;
-        if (e.type === "together") return false;
-        return e.owner === ME || e.ownerEmail === user?.email;
-      }
-      if (e.private && e.ownerEmail !== user?.email) return false;
-      return true;
-    });
-    const holiday = getHolidayForDate(s);
-    cells.push({ day, off, s, evts, holiday });
+    cells.push({ day, off, s, evts: filterEvts(getEventsForDs(s, events)), holiday: getHolidayForDate(s) });
   }
+
+  // Week view cells — week containing curDate (Sunday start)
+  const weekStart = new Date(curDate);
+  weekStart.setDate(curDate.getDate() - curDate.getDay());
+  const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
+  const weekDays = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekStart); d.setDate(weekStart.getDate() + i);
+    const s = toDs(d);
+    weekDays.push({ d, s, evts: filterEvts(getEventsForDs(s, events)), holiday: getHolidayForDate(s) });
+  }
+
+  const wSm = `${weekStart.getMonth()+1}月${weekStart.getDate()}日`;
+  const wEm = weekEnd.getMonth() !== weekStart.getMonth()
+    ? `${weekEnd.getMonth()+1}月${weekEnd.getDate()}日`
+    : `${weekEnd.getDate()}日`;
+
   return (
     <div className="cal-card">
       {showPicker && <MonthPicker curDate={curDate} onSelect={onJumpTo} onClose={() => setShowPicker(false)} />}
       <div className="cal-nav">
         <button className="cal-nav-btn" onClick={() => onChangeMonth(-1)}><ChevronLeft size={18} /></button>
-        <h2 className="cal-title-btn" onClick={() => setShowPicker(true)}>{y}年 {MONTH_NAMES[m]}</h2>
-        <button className="cal-nav-btn" onClick={() => onChangeMonth(1)}><ChevronRight size={18} /></button>
+        <h2 className="cal-title-btn" onClick={() => setShowPicker(true)}>
+          {calView === "week" ? `${y}年 ${wSm} – ${wEm}` : `${y}年 ${MONTH_NAMES[m]}`}
+        </h2>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          <div className="cal-view-pills">
+            <button className={`cal-view-pill${calView==="month"?" active":""}`} onClick={() => onCalViewChange?.("month")}>月</button>
+            <button className={`cal-view-pill${calView==="week"?" active":""}`} onClick={() => onCalViewChange?.("week")}>周</button>
+          </div>
+          <button className="cal-nav-btn" onClick={() => onChangeMonth(1)}><ChevronRight size={18} /></button>
+        </div>
       </div>
-      <div className="weekdays">{["日","一","二","三","四","五","六"].map(d => <div key={d} className="weekday">{d}</div>)}</div>
-      <div className="days-grid">
-        {cells.map(({ day, off, s, evts, holiday }) => {
-          let cls = "day-cell";
-          if (off !== 0) cls += " other-month";
-          if (s === today) cls += " today";
-          if (s === selDate) cls += " selected";
-          if (holiday) cls += " has-holiday";
-          return (
-            <div key={s} className={cls} onClick={() => onSelectDay(s)}>
-              {stickerData[s]?.map((p, i) => (
-                <img key={i} src={p.imageUrl} className="day-sticker-thumb"
-                  style={{ left:`${p.x*100}%`, top:`${p.y*100}%`, opacity:p.opacity }} alt="" />
-              ))}
-              <div className="day-num">{day}</div>
-              <div className="day-pips">
-                {evts.slice(0, 6).map((e, i) => <div key={i} className={`pip ${evClass(e)}`} />)}
-                {holiday && <div className="pip holiday" />}
+
+      {calView === "week" ? (
+        <div className="week-grid">
+          {weekDays.map(({ d, s, evts, holiday }) => {
+            let cls = "week-day-col";
+            if (s === today) cls += " today";
+            if (s === selDate) cls += " selected";
+            return (
+              <div key={s} className={cls} onClick={() => onSelectDay(s)}>
+                <div className="week-day-hdr">
+                  <div className="week-day-name">{WEEKDAY_NAMES_SHORT[d.getDay()]}</div>
+                  <div className="week-day-num">{d.getDate()}</div>
+                </div>
+                {(holiday ? [{title: holiday.name, type: "holiday"},...evts] : evts).slice(0, 4).map((e, i) => (
+                  <div key={i} className={`week-ev-pill ${evClass(e)}`}>{e.title}</div>
+                ))}
+                {evts.length + (holiday?1:0) > 4 && <div className="week-ev-more">+{evts.length + (holiday?1:0) - 4}</div>}
               </div>
-            </div>
-          );
-        })}
-      </div>
-      <div className="legend">
-        {[["personal","特别事件"],["school","学校"],["together","两人"],["anniversary","纪念日"],["holiday","节假日"],["exam","考试"]].map(([cls,lbl]) => (
-          <div key={cls} className="legend-item"><div className="legend-pip" style={{background:`var(--${cls})`}} />{lbl}</div>
-        ))}
-      </div>
+            );
+          })}
+        </div>
+      ) : (
+        <>
+          <div className="weekdays">{["日","一","二","三","四","五","六"].map(d => <div key={d} className="weekday">{d}</div>)}</div>
+          <div className="days-grid">
+            {cells.map(({ day, off, s, evts, holiday }) => {
+              let cls = "day-cell";
+              if (off !== 0) cls += " other-month";
+              if (s === today) cls += " today";
+              if (s === selDate) cls += " selected";
+              if (holiday) cls += " has-holiday";
+              return (
+                <div key={s} className={cls} onClick={() => onSelectDay(s)}>
+                  {stickerData[s]?.map((p, i) => (
+                    <img key={i} src={p.imageUrl} className="day-sticker-thumb"
+                      style={{ left:`${p.x*100}%`, top:`${p.y*100}%`, opacity:p.opacity }} alt="" />
+                  ))}
+                  <div className="day-num">{day}</div>
+                  <div className="day-pips">
+                    {evts.slice(0, 6).map((e, i) => <div key={i} className={`pip ${evClass(e)}`} />)}
+                    {holiday && <div className="pip holiday" />}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="legend">
+            {[["personal","特别事件"],["school","学校"],["together","两人"],["anniversary","纪念日"],["holiday","节假日"],["exam","考试"]].map(([cls,lbl]) => (
+              <div key={cls} className="legend-item"><div className="legend-pip" style={{background:`var(--${cls})`}} />{lbl}</div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -580,6 +632,8 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
   const [expandedId, setExpandedId] = useState(null);
   const [expandStats, setExpandStats] = useState(false);
   const [diaryDate, setDiaryDate] = useState(null);
+  const [diaryText, setDiaryText] = useState(null);
+  const [diaryDraw, setDiaryDraw] = useState(null);
 
   const filterForView = evList => evList.filter(e => {
     if (viewMode === "mine") {
@@ -666,9 +720,17 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
             </div>
           </div>
           {selDate && (
-            <button className="icon-btn diary-draw-btn" onClick={() => setDiaryDate(selDate)} title="手绘">
-              <Edit2 size={16} />
-            </button>
+            <div style={{display:"flex",gap:6}}>
+              <button className="icon-btn diary-draw-btn" onClick={() => setDiaryText(selDate)} title="文字日记">
+                <PenLine size={16} />
+              </button>
+              <button className="icon-btn diary-draw-btn" onClick={() => setDiaryDraw(selDate)} title="画画">
+                <Pencil size={16} />
+              </button>
+              <button className="icon-btn diary-draw-btn" onClick={() => setDiaryDate(selDate)} title="贴纸">
+                <Edit2 size={16} />
+              </button>
+            </div>
           )}
         </div>
         <div className="ev-list">
@@ -716,7 +778,7 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
                 </div>
                 {photoSrc && (
                   <div className="ev-photo-wrap" onClick={ev => ev.stopPropagation()}>
-                    <img className="ev-photo" src={photoSrc} alt="" onClick={() => onPhotoClick(photoSrc)} />
+                    <img className="ev-photo" src={photoSrc} alt="" onClick={() => onPhotoClick(evPhotos, 0)} />
                     {evPhotos.length > 1 && <span className="ev-photo-count">+{evPhotos.length - 1}</span>}
                   </div>
                 )}
@@ -790,6 +852,91 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
         )}
       </div>
       {diaryDate && <StickerModal date={diaryDate} isShared={viewMode === "shared"} onClose={() => setDiaryDate(null)} />}
+      {diaryText && <DiaryTextModal date={diaryText} isShared={viewMode === "shared"} onClose={() => setDiaryText(null)} />}
+      {diaryDraw && <DrawingModal date={diaryDraw} isShared={viewMode === "shared"} onClose={() => setDiaryDraw(null)} />}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────
+// ADD / EDIT MODAL
+// ─────────────────────────────────────────
+// CROP UTILITIES
+// ─────────────────────────────────────────
+async function getCroppedImg(imageSrc, pixelCrop) {
+  const img = new Image();
+  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = imageSrc; });
+  const MAX = 600;
+  const sc = Math.min(MAX / pixelCrop.width, MAX / pixelCrop.height, 1);
+  const w = Math.round(pixelCrop.width * sc), h = Math.round(pixelCrop.height * sc);
+  const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+  cv.getContext("2d").drawImage(img, pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height, 0, 0, w, h);
+  return cv.toDataURL("image/webp", 0.82);
+}
+
+// ─────────────────────────────────────────
+// CROP MODAL
+// ─────────────────────────────────────────
+const CROP_ASPECTS = [
+  { label: "1:1", value: 1 },
+  { label: "4:3", value: 4 / 3 },
+  { label: "3:4", value: 3 / 4 },
+  { label: "16:9", value: 16 / 9 },
+];
+
+function CropModal({ src, onConfirm, onCancel }) {
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [aspect, setAspect] = useState(1);
+  const [croppedAreaPx, setCroppedAreaPx] = useState(null);
+  const [confirming, setConfirming] = useState(false);
+
+  const onCropComplete = useCallback((_, pixels) => setCroppedAreaPx(pixels), []);
+
+  const handleConfirm = async () => {
+    if (!croppedAreaPx || confirming) return;
+    setConfirming(true);
+    try { onConfirm(await getCroppedImg(src, croppedAreaPx)); }
+    catch { setConfirming(false); }
+  };
+
+  return (
+    <div className="overlay open" style={{zIndex:120}}>
+      <div className="modal crop-modal">
+        <div className="modal-handle" />
+        <div className="modal-hdr">
+          <div><div className="modal-title">裁剪照片</div></div>
+          <button className="modal-close" onClick={onCancel}><X size={16} /></button>
+        </div>
+        <div className="crop-aspect-btns">
+          {CROP_ASPECTS.map(a => (
+            <button key={a.label} className={`crop-aspect-btn${aspect === a.value ? " active" : ""}`}
+              onClick={() => setAspect(a.value)}>{a.label}</button>
+          ))}
+        </div>
+        <div className="crop-container">
+          <Cropper
+            image={src}
+            crop={crop}
+            zoom={zoom}
+            aspect={aspect}
+            onCropChange={setCrop}
+            onZoomChange={setZoom}
+            onCropComplete={onCropComplete}
+          />
+        </div>
+        <div style={{marginTop:12}}>
+          <label className="f-label">缩放</label>
+          <input type="range" min={1} max={3} step={0.05} value={zoom}
+            onChange={e => setZoom(+e.target.value)} style={{width:"100%"}} />
+        </div>
+        <div style={{display:"flex",gap:8,marginTop:16}}>
+          <button className="pbtn" style={{flex:1}} onClick={onCancel}>取消</button>
+          <button className="pbtn primary" style={{flex:1}} onClick={handleConfirm} disabled={confirming}>
+            {confirming ? "处理中..." : "✓ 确认裁剪"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -799,7 +946,7 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
 // ─────────────────────────────────────────
 function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, viewMode }) {
   const { user, ME } = useMe();
-  const isEdit = Boolean(initEdit);
+  const isEdit = Boolean(initEdit?.id);
   const [title, setTitle] = useState("");
   const [type, setType] = useState("work");
   const [date, setDate] = useState(defaultDate || todayDs());
@@ -809,6 +956,7 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, v
   const [repeat, setRepeat] = useState(false);
   const [note, setNote] = useState("");
   const [photos, setPhotos] = useState([]); // array of compressed data URLs
+  const [cropSrc, setCropSrc] = useState(null); // raw data URL awaiting crop
   const [isPrivate, setIsPrivate] = useState(false);
   const [recType, setRecType] = useState("none");
   const [recEnd, setRecEnd] = useState("");
@@ -843,33 +991,27 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, v
 
   const resetForm = () => {
     setTitle(""); setType(viewMode === "mine" ? "personal" : "together"); setTime(""); setNote(""); setEndDate("");
-    setAllDay(false); setRepeat(false); setPhotos([]);
+    setAllDay(false); setRepeat(false); setPhotos([]); setCropSrc(null);
     setError(""); setIsPrivate(false);
     setRecType("none"); setRecEnd(""); setRecWeekdays([0,1,2,3,4,5,6]);
   };
 
-  const compressPhoto = (file) => new Promise(res => {
-    const img = new Image(), url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const MAX = 600, sc = Math.min(MAX / img.width, MAX / img.height, 1);
-      const w = Math.round(img.width * sc), h = Math.round(img.height * sc);
-      const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
-      cv.getContext("2d").drawImage(img, 0, 0, w, h);
-      res(cv.toDataURL("image/webp", 0.82));
-    };
-    img.src = url;
-  });
-
-  const handlePhoto = async (e) => {
+  const handlePhoto = (e) => {
     const file = e.target.files[0]; if (!file) return;
     e.target.value = "";
     setError("");
     if (!ALLOWED_IMAGE_TYPES.has(file.type)) { setError("只支持 JPG、PNG、WEBP 或 GIF。"); return; }
     if (file.size > LIMITS.imageBytes) { setError("图片不能超过 4MB。"); return; }
     if (photos.length >= MAX_PHOTOS) { setError(`最多添加 ${MAX_PHOTOS} 张照片。`); return; }
-    const dataUrl = await compressPhoto(file);
-    setPhotos(prev => [...prev, dataUrl]);
+    // Read as data URL for the crop modal
+    const reader = new FileReader();
+    reader.onload = ev => setCropSrc(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
+  const handleCropConfirm = (croppedDataUrl) => {
+    setPhotos(prev => [...prev, croppedDataUrl]);
+    setCropSrc(null);
   };
 
   const toggleWeekday = d => setRecWeekdays(ws => ws.includes(d) ? ws.filter(w => w !== d) : [...ws, d]);
@@ -944,6 +1086,8 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, v
       ];
 
   return (
+    <>
+    {cropSrc && <CropModal src={cropSrc} onConfirm={handleCropConfirm} onCancel={() => setCropSrc(null)} />}
     <div className="overlay open" onClick={e => { if (e.target.classList.contains("overlay")) { resetForm(); onClose(); } }}>
       <div className="modal" style={{"--modal-accent": TYPE_ACCENT[type] || "var(--together)"}}>
         <div className="modal-handle" />
@@ -1088,6 +1232,7 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, v
         </button>
       </div>
     </div>
+    </>
   );
 }
 
@@ -1116,6 +1261,25 @@ function DeleteConfirmPopup({ event, onClose, onConfirm }) {
             <button className="pbtn primary" onClick={() => onConfirm("single")}>确认删除</button>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────
+// EDIT SCOPE POPUP (recurring events)
+// ─────────────────────────────────────────
+function EditScopePopup({ event, onClose, onEditThis, onEditAll }) {
+  return (
+    <div className="popup-overlay" onClick={e => e.target.classList.contains("popup-overlay") && onClose()}>
+      <div className="popup-box">
+        <div className="popup-title">编辑重复活动</div>
+        <p style={{color:"var(--muted)",fontSize:14,margin:"8px 0 16px"}}>「{event?.title}」是重复活动，你要修改哪些？</p>
+        <div style={{display:"grid",gap:8}}>
+          <button className="pbtn" onClick={onEditThis}>只修改这一次</button>
+          <button className="pbtn" onClick={onEditAll}>修改整个系列</button>
+          <button className="pbtn" onClick={onClose}>取消</button>
+        </div>
       </div>
     </div>
   );
@@ -1198,17 +1362,17 @@ function SearchOverlay({ events, onClose, onJumpTo }) {
 // ─────────────────────────────────────────
 function PhotoStrip({ events, onPhotoClick, onEdit }) {
   const photos = events.flatMap(e => {
-    const srcs = e.photos?.length ? e.photos : (e.photo ? [e.photo] : []);
-    return srcs.filter(safeImageSrc).map(src => ({ src, event: e }));
+    const srcs = (e.photos?.length ? e.photos : (e.photo ? [e.photo] : [])).filter(safeImageSrc);
+    return srcs.map((src, idx) => ({ src, idx, allSrcs: srcs, event: e }));
   });
   if (photos.length === 0) return null;
   return (
     <div className="photo-strip">
       <div className="photo-strip-label"><ImageIcon size={13} /> 照片 ({photos.length})</div>
       <div className="photo-strip-row">
-        {photos.map(({ src, event }) => (
-          <div key={event.id} className="photo-strip-item">
-            <img src={src} alt="" onClick={() => onPhotoClick(src)} draggable={false} />
+        {photos.map(({ src, idx, allSrcs, event }) => (
+          <div key={event.id + "-" + idx} className="photo-strip-item">
+            <img src={src} alt="" onClick={() => onPhotoClick(allSrcs, idx)} draggable={false} />
             <button className="photo-strip-edit" onClick={e => { e.stopPropagation(); onEdit(event); }} title="编辑">
               <Edit2 size={11} />
             </button>
@@ -1512,6 +1676,419 @@ function StickerModal({ onClose, date, isShared = false }) {
 }
 
 // ─────────────────────────────────────────
+// DIARY TEXT MODAL
+// ─────────────────────────────────────────
+function DiaryTextModal({ onClose, date, isShared }) {
+  const { user } = useMe();
+  const [text, setText] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    const [col, key] = isShared ? ["couple", `diary_${date}`] : ["pencil", `${user.uid}-${date}`];
+    getDoc(doc(db, col, key)).then(snap => {
+      if (snap.exists()) setText(snap.data().text || "");
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [user, date, isShared]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const [col, key] = isShared ? ["couple", `diary_${date}`] : ["pencil", `${user.uid}-${date}`];
+      await setDoc(doc(db, col, key), {
+        date, text: cleanText(text, 2000),
+        ...(isShared ? {} : { ownerEmail: user.email }),
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+      onClose();
+    } catch (err) { console.error(err); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="overlay open" onClick={e => e.target.classList.contains("overlay") && onClose()}>
+      <div className="modal">
+        <div className="modal-handle" />
+        <div className="modal-hdr">
+          <div>
+            <div className="modal-title">📔 {fmtDate(date)}</div>
+            <div className="modal-sub">{isShared ? "共享日记 · 两人都能看到" : "私人日记 · 只有自己看到"}</div>
+          </div>
+          <button className="modal-close" onClick={onClose}><X size={16} /></button>
+        </div>
+        {loading
+          ? <div style={{textAlign:"center",padding:"20px",color:"var(--muted)"}}>加载中...</div>
+          : <textarea className="diary-textarea" placeholder="今天发生了什么，有什么想说的..."
+              value={text} onChange={e => setText(e.target.value)} maxLength={2000} autoFocus />
+        }
+        {!loading && <div style={{fontSize:11,color:"var(--muted)",textAlign:"right",marginTop:4}}>{text.length}/2000</div>}
+        <button className="btn-submit" style={{marginTop:12}} onClick={save} disabled={saving || loading}>
+          <Check size={16} /> {saving ? "保存中..." : "保存日记"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────
+// DRAWING MODAL
+// ─────────────────────────────────────────
+const DRAW_COLORS = [
+  "#000000","#555555","#999999","#cccccc","#ffffff",
+  "#dd4f68","#e8809a","#5488e8","#6b9bd2","#c38321","#23a071","#7b61ff",
+];
+
+function DrawingModal({ onClose, date, isShared }) {
+  const { user } = useMe();
+  const [tool, setTool] = useState("pen");
+  const [color, setColor] = useState("#000000");
+  const [lineWidth, setLineWidth] = useState(4);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState(null);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  const commitRef = useRef(null);
+  const activeRef = useRef(null);
+  const containerRef = useRef(null);
+  const historyRef = useRef({ past: [], future: [] });
+  const strokeRef = useRef({ drawing: false, pointerId: null, pointerType: null });
+  const ptsRef = useRef([]);
+  const penActiveRef = useRef(false);
+  const rafRef = useRef(null);
+  const toolRef = useRef(tool);
+  const colorRef = useRef(color);
+  const lineWidthRef = useRef(lineWidth);
+
+  useEffect(() => { toolRef.current = tool; }, [tool]);
+  useEffect(() => { colorRef.current = color; }, [color]);
+  useEffect(() => { lineWidthRef.current = lineWidth; }, [lineWidth]);
+
+  const setupCanvas = useCallback((canvas, cssW, cssH) => {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+    canvas.style.width = cssW + "px";
+    canvas.style.height = cssH + "px";
+    const ctx = canvas.getContext("2d");
+    ctx.scale(dpr, dpr);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    return ctx;
+  }, []);
+
+  const saveHistorySnapshot = useCallback(() => {
+    const commit = commitRef.current;
+    if (!commit) return;
+    const ctx = commit.getContext("2d");
+    const snap = ctx.getImageData(0, 0, commit.width, commit.height);
+    const h = historyRef.current;
+    h.past.push(snap);
+    if (h.past.length > 30) h.past.shift();
+    h.future = [];
+    setCanUndo(h.past.length > 1);
+    setCanRedo(false);
+  }, []);
+
+  useEffect(() => {
+    document.body.classList.add("diary-open");
+    return () => document.body.classList.remove("diary-open");
+  }, []);
+
+  useEffect(() => {
+    if (!user || !containerRef.current) return;
+    const container = containerRef.current;
+    const cssW = container.clientWidth;
+    const cssH = container.clientHeight;
+
+    const commitCtx = setupCanvas(commitRef.current, cssW, cssH);
+    setupCanvas(activeRef.current, cssW, cssH);
+
+    const [col, key] = isShared ? ["couple", `diary_${date}`] : ["pencil", `${user.uid}-${date}`];
+    getDoc(doc(db, col, key)).then(snap => {
+      if (snap.exists() && snap.data().drawing) {
+        const img = new Image();
+        img.onload = () => {
+          commitCtx.drawImage(img, 0, 0, cssW, cssH);
+          saveHistorySnapshot();
+          setLoading(false);
+        };
+        img.onerror = () => {
+          commitCtx.fillStyle = "#ffffff";
+          commitCtx.fillRect(0, 0, cssW, cssH);
+          saveHistorySnapshot();
+          setLoading(false);
+        };
+        img.src = snap.data().drawing;
+      } else {
+        commitCtx.fillStyle = "#ffffff";
+        commitCtx.fillRect(0, 0, cssW, cssH);
+        saveHistorySnapshot();
+        setLoading(false);
+      }
+    }).catch(() => {
+      if (commitRef.current) {
+        const ctx = commitRef.current.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, cssW, cssH);
+        saveHistorySnapshot();
+      }
+      setLoading(false);
+    });
+  }, [user, date, isShared, setupCanvas, saveHistorySnapshot]);
+
+  useEffect(() => {
+    const onKey = e => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "z") {
+        e.preventDefault();
+        if (e.shiftKey) redo(); else undo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
+
+  const getCanvasPoint = useCallback((e) => {
+    const canvas = activeRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+  }, []);
+
+  const renderStroke = useCallback(() => {
+    const pts = ptsRef.current;
+    if (pts.length < 1) return;
+    const active = activeRef.current;
+    if (!active) return;
+    const ctx = active.getContext("2d");
+    const cssW = active.offsetWidth;
+    const cssH = active.offsetHeight;
+    ctx.clearRect(0, 0, cssW, cssH);
+
+    const isEraser = toolRef.current === "eraser";
+    ctx.strokeStyle = isEraser ? "#ffffff" : colorRef.current;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    if (pts.length === 1) {
+      const p = pts[0];
+      const w = isEraser ? lineWidthRef.current * 4 : lineWidthRef.current * (0.4 + p.pressure * 0.6);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, w / 2, 0, Math.PI * 2);
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.fill();
+      return;
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length - 1; i++) {
+      const p = pts[i];
+      const mx = (p.x + pts[i + 1].x) / 2;
+      const my = (p.y + pts[i + 1].y) / 2;
+      const w = isEraser ? lineWidthRef.current * 4 : lineWidthRef.current * (0.4 + p.pressure * 0.6);
+      ctx.lineWidth = w;
+      ctx.quadraticCurveTo(p.x, p.y, mx, my);
+    }
+    const last = pts[pts.length - 1];
+    ctx.lineWidth = isEraser ? lineWidthRef.current * 4 : lineWidthRef.current * (0.4 + last.pressure * 0.6);
+    ctx.lineTo(last.x, last.y);
+    ctx.stroke();
+  }, []);
+
+  const scheduleRender = useCallback(() => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(renderStroke);
+  }, [renderStroke]);
+
+  const finalizeStroke = useCallback(() => {
+    const commit = commitRef.current;
+    const active = activeRef.current;
+    if (!commit || !active) return;
+    const commitCtx = commit.getContext("2d");
+    const cssW = active.offsetWidth;
+    const cssH = active.offsetHeight;
+    commitCtx.drawImage(active, 0, 0, cssW, cssH);
+    const activeCtx = active.getContext("2d");
+    activeCtx.clearRect(0, 0, cssW, cssH);
+  }, []);
+
+  const onPointerDown = useCallback(e => {
+    const canvas = activeRef.current;
+    if (!canvas) return;
+    try { canvas.setPointerCapture(e.pointerId); } catch {}
+
+    if (e.pointerType === "pen") penActiveRef.current = true;
+    if (penActiveRef.current && e.pointerType === "touch") return;
+    if (strokeRef.current.drawing) return;
+
+    saveHistorySnapshot();
+    const { x, y } = getCanvasPoint(e);
+    const pressure = e.pointerType === "pen" ? Math.max(0.2, e.pressure || 0.5) : 1.0;
+    strokeRef.current = { drawing: true, pointerId: e.pointerId, pointerType: e.pointerType };
+    ptsRef.current = [{ x, y, pressure }];
+    scheduleRender();
+  }, [saveHistorySnapshot, getCanvasPoint, scheduleRender]);
+
+  const onPointerMove = useCallback(e => {
+    if (!strokeRef.current.drawing || e.pointerId !== strokeRef.current.pointerId) return;
+    const evts = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+    evts.forEach(ev => {
+      const { x, y } = getCanvasPoint(ev);
+      const pressure = ev.pointerType === "pen" ? Math.max(0.2, ev.pressure || 0.5) : 1.0;
+      ptsRef.current.push({ x, y, pressure });
+    });
+    scheduleRender();
+  }, [getCanvasPoint, scheduleRender]);
+
+  const onPointerUp = useCallback(e => {
+    if (e.pointerId !== strokeRef.current.pointerId) return;
+    if (e.pointerType === "pen") penActiveRef.current = false;
+    if (strokeRef.current.drawing) {
+      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+      renderStroke();
+      finalizeStroke();
+    }
+    strokeRef.current = { drawing: false, pointerId: null, pointerType: null };
+    ptsRef.current = [];
+  }, [renderStroke, finalizeStroke]);
+
+  const onPointerCancel = onPointerUp;
+
+  const undo = useCallback(() => {
+    const h = historyRef.current;
+    if (h.past.length <= 1) return;
+    const snap = h.past.pop();
+    h.future.push(snap);
+    const commit = commitRef.current;
+    if (!commit) return;
+    commit.getContext("2d").putImageData(h.past[h.past.length - 1], 0, 0);
+    setCanUndo(h.past.length > 1);
+    setCanRedo(true);
+  }, []);
+
+  const redo = useCallback(() => {
+    const h = historyRef.current;
+    if (!h.future.length) return;
+    const snap = h.future.pop();
+    h.past.push(snap);
+    const commit = commitRef.current;
+    if (!commit) return;
+    commit.getContext("2d").putImageData(snap, 0, 0);
+    setCanUndo(h.past.length > 1);
+    setCanRedo(h.future.length > 0);
+  }, []);
+
+  const clear = useCallback(() => {
+    const commit = commitRef.current;
+    if (!commit) return;
+    saveHistorySnapshot();
+    const ctx = commit.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, commit.offsetWidth, commit.offsetHeight);
+    setConfirmClear(false);
+  }, [saveHistorySnapshot]);
+
+  const save = async () => {
+    setSaving(true);
+    setSaveErr(null);
+    try {
+      const dataUrl = commitRef.current.toDataURL("image/webp", 0.82);
+      const [col, key] = isShared ? ["couple", `diary_${date}`] : ["pencil", `${user.uid}-${date}`];
+      await setDoc(doc(db, col, key), {
+        date, drawing: dataUrl,
+        ...(isShared ? {} : { ownerEmail: user.email }),
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+      onClose();
+    } catch (err) {
+      console.error(err);
+      setSaveErr("保存失败，请重试");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="diary-overlay" onClick={e => e.target.classList.contains("diary-overlay") && onClose()}>
+      <div className="drawing-panel">
+        <div className="diary-hdr">
+          <div>
+            <div className="diary-title">✏️ {fmtDate(date)}</div>
+            <div className="diary-sub">{isShared ? "共享画板 · 两人都能看到" : "私人画板 · 只有自己看到"}</div>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            {saveErr && <span style={{ fontSize: 12, color: "#dd4f68" }}>{saveErr}</span>}
+            <button className="btn-submit" style={{ padding: "6px 14px", fontSize: 13 }} onClick={save} disabled={saving || loading}>
+              {saving ? "保存中..." : "保存"}
+            </button>
+            <button className="modal-close" onClick={onClose}><X size={16} /></button>
+          </div>
+        </div>
+
+        <div className="drawing-canvas-wrap" ref={containerRef}>
+          {loading && <div className="diary-loading">加载中...</div>}
+          <canvas ref={commitRef} className="drawing-canvas" style={{ zIndex: 1 }} />
+          <canvas ref={activeRef} className="drawing-canvas" style={{ zIndex: 2, touchAction: "none" }}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerCancel}
+          />
+        </div>
+
+        <div className="draw-toolbar">
+          <div className="draw-tool-row">
+            <button className={`draw-tool-btn${tool === "pen" ? " active" : ""}`} onClick={() => setTool("pen")} title="画笔">
+              <Pencil size={15} />
+            </button>
+            <button className={`draw-tool-btn${tool === "eraser" ? " active" : ""}`} onClick={() => setTool("eraser")} title="橡皮擦">
+              <span style={{ fontSize: 15, lineHeight: 1 }}>◻</span>
+            </button>
+            <div className="draw-width-row">
+              <span style={{ fontSize: 11, color: "var(--muted)", flexShrink: 0 }}>{lineWidth}px</span>
+              <input type="range" min={1} max={20} value={lineWidth}
+                onChange={e => setLineWidth(Number(e.target.value))}
+                style={{ flex: 1, accentColor: "var(--accent)" }} />
+            </div>
+            <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
+              <button className="draw-tool-btn" onClick={undo} disabled={!canUndo} title="撤销 (Ctrl+Z)">↩</button>
+              <button className="draw-tool-btn" onClick={redo} disabled={!canRedo} title="重做 (Ctrl+Shift+Z)">↪</button>
+              {confirmClear
+                ? <span style={{ display: "flex", gap: 4, alignItems: "center", fontSize: 12 }}>
+                    确定清空?
+                    <button className="draw-tool-btn" style={{ color: "#dd4f68" }} onClick={clear}>确认</button>
+                    <button className="draw-tool-btn" onClick={() => setConfirmClear(false)}>取消</button>
+                  </span>
+                : <button className="draw-tool-btn" onClick={() => setConfirmClear(true)} title="清空">✕</button>
+              }
+            </div>
+          </div>
+          <div className="draw-palette">
+            {DRAW_COLORS.map(c => (
+              <button key={c} className={`draw-color-swatch${color === c ? " active" : ""}`}
+                style={{ background: c, border: c === "#ffffff" ? "1.5px solid #ccc" : undefined }}
+                onClick={() => { setColor(c); setTool("pen"); }} />
+            ))}
+            <input type="color" value={color}
+              onChange={e => { setColor(e.target.value); setTool("pen"); }}
+              title="自定义颜色"
+              style={{ width: 24, height: 24, padding: 0, border: "none", borderRadius: 4, cursor: "pointer", background: "none" }} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────
 // PROFILE DRAWER
 // ─────────────────────────────────────────
 function ProfileDrawer({ open, onClose, onLogout }) {
@@ -1752,16 +2329,20 @@ function AppContent() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editEvent, setEditEvent] = useState(null);
   const [schoolOpen, setSchoolOpen] = useState(false);
-  const [lightboxSrc, setLightboxSrc] = useState(null);
+  const [lightbox, setLightbox] = useState(null); // { srcs: string[], idx: number } | null
   const [viewMode, setViewMode] = useState("shared");
   const [searchOpen, setSearchOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [editScopeTarget, setEditScopeTarget] = useState(null);
+  const [calView, setCalView] = useState("month");
   const detailRef = useRef();
   const [anniversaryDate, setAnniversaryDate] = useState("2025-01-01");
   const [maintenance, setMaintenance] = useState(false);
   const [stickerData, setStickerData] = useState({});
   const [sharedStickerData, setSharedStickerData] = useState({});
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [installDismissed, setInstallDismissed] = useState(storageGet("installDismissed") === "1");
 
   const ME = user?.email === HIM_EMAIL ? "him" : "her";
   const PARTNER = ME === "him" ? "her" : "him";
@@ -1777,6 +2358,24 @@ function AppContent() {
   // Gate CSS token transitions until after first render to prevent
   // a flash-transition on initial dark-mode load
   useEffect(() => { document.documentElement.classList.add("theme-ready"); }, []);
+
+  useEffect(() => {
+    const handler = e => { e.preventDefault(); setDeferredPrompt(e); };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  // Lightbox keyboard navigation
+  useEffect(() => {
+    if (!lightbox) return;
+    const fn = e => {
+      if (e.key === "ArrowLeft") setLightbox(l => l && l.srcs.length > 1 ? {...l, idx:(l.idx-1+l.srcs.length)%l.srcs.length} : l);
+      if (e.key === "ArrowRight") setLightbox(l => l && l.srcs.length > 1 ? {...l, idx:(l.idx+1)%l.srcs.length} : l);
+      if (e.key === "Escape") setLightbox(null);
+    };
+    window.addEventListener("keydown", fn);
+    return () => window.removeEventListener("keydown", fn);
+  }, [lightbox]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, u => {
@@ -1967,6 +2566,31 @@ function AppContent() {
     try { await deleteDoc(doc(db, "school_events", event.id)); } catch (e) { console.error(e); }
   };
 
+  const openEdit = (e) => {
+    if (e.isRecurrenceInstance && e.recurrence?.type && e.recurrence.type !== "none") {
+      setEditScopeTarget(e);
+    } else {
+      setEditEvent(e); setModalOpen(true);
+    }
+  };
+
+  const handleEditThisOnly = async () => {
+    if (!editScopeTarget) return;
+    try {
+      const exceptions = [...(editScopeTarget.recurrence?.exceptions || []), editScopeTarget.date];
+      await updateDoc(doc(db, "events", editScopeTarget.id), { "recurrence.exceptions": exceptions });
+    } catch (err) { console.error(err); }
+    setEditEvent({ ...editScopeTarget, id: null, recurrence: null, isRecurrenceInstance: undefined });
+    setModalOpen(true);
+    setEditScopeTarget(null);
+  };
+
+  const handleEditAll = () => {
+    setEditEvent(editScopeTarget);
+    setModalOpen(true);
+    setEditScopeTarget(null);
+  };
+
   const handleJumpTo = dateStr => {
     if (!isDateString(dateStr)) return;
     const d = new Date(dateStr + "T00:00:00");
@@ -2007,6 +2631,34 @@ function AppContent() {
   return (
     <UserCtx.Provider value={{ user, ME, PARTNER }}>
       <OfflineBanner />
+      {deferredPrompt && !installDismissed && (
+        <div style={{
+          position: "fixed", bottom: 88, left: 16, right: 16, zIndex: 150,
+          background: "var(--surface)", border: "1px solid var(--line)",
+          borderRadius: 20, padding: "14px 16px",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          boxShadow: "var(--shadow)", gap: 12,
+        }}>
+          <div style={{ fontSize: 13 }}>
+            <div style={{ fontWeight: 800, marginBottom: 2 }}>安装 Calendar App</div>
+            <div style={{ color: "var(--muted)", fontSize: 12 }}>添加到主屏幕，随时使用</div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => { setInstallDismissed(true); storageSet("installDismissed", "1"); }}
+              style={{ border: "1px solid var(--line)", background: "none", borderRadius: 999, padding: "6px 12px", fontSize: 12, cursor: "pointer", color: "var(--text)" }}>
+              不了
+            </button>
+            <button onClick={async () => {
+              deferredPrompt.prompt();
+              const { outcome } = await deferredPrompt.userChoice;
+              if (outcome === "accepted") setDeferredPrompt(null);
+            }}
+              style={{ background: "var(--together)", color: "white", border: "none", borderRadius: 999, padding: "6px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+              安装
+            </button>
+          </div>
+        </div>
+      )}
       <div className="blob blob-1"/><div className="blob blob-2"/><div className="blob blob-3"/>
       <div className="app">
         <header className="header">
@@ -2034,15 +2686,24 @@ function AppContent() {
         <div className="main-grid">
           <Calendar curDate={curDate} events={allEvents} selDate={selDate}
             onSelectDay={setSelDate}
-            onChangeMonth={d => setCurDate(new Date(curDate.getFullYear(), curDate.getMonth()+d, 1))}
+            onChangeMonth={d => {
+              if (calView === "week") {
+                const nd = new Date(curDate); nd.setDate(nd.getDate() + d * 7); setCurDate(nd);
+              } else {
+                setCurDate(new Date(curDate.getFullYear(), curDate.getMonth()+d, 1));
+              }
+            }}
             onJumpTo={d => setCurDate(d)}
-            viewMode={viewMode} stickerData={viewMode === "mine" ? stickerData : sharedStickerData} />
+            viewMode={viewMode}
+            calView={calView}
+            onCalViewChange={setCalView}
+            stickerData={viewMode === "mine" ? stickerData : sharedStickerData} />
           <div ref={detailRef}>
             <Sidebar selDate={selDate} events={allEvents} curDate={curDate}
               viewMode={viewMode}
               onDelete={e => setDeleteTarget(e)}
-              onEdit={e => { setEditEvent(e); setModalOpen(true); }}
-              onPhotoClick={src => setLightboxSrc(src)} />
+              onEdit={e => openEdit(e)}
+              onPhotoClick={(srcs, idx) => setLightbox({ srcs, idx })} />
           </div>
         </div>
       </div>
@@ -2069,6 +2730,15 @@ function AppContent() {
         />
       )}
 
+      {editScopeTarget && (
+        <EditScopePopup
+          event={editScopeTarget}
+          onClose={() => setEditScopeTarget(null)}
+          onEditThis={handleEditThisOnly}
+          onEditAll={handleEditAll}
+        />
+      )}
+
       {searchOpen && (
         <SearchOverlay events={allEvents} onClose={() => setSearchOpen(false)} onJumpTo={handleJumpTo} />
       )}
@@ -2079,9 +2749,14 @@ function AppContent() {
         onLogout={handleLogout}
       />
 
-      {safeImageSrc(lightboxSrc) && (
-        <div className="lightbox" onClick={() => setLightboxSrc(null)}>
-          <img src={safeImageSrc(lightboxSrc)} alt="" />
+      {lightbox && safeImageSrc(lightbox.srcs[lightbox.idx]) && (
+        <div className="lightbox" onClick={() => setLightbox(null)}>
+          <img src={lightbox.srcs[lightbox.idx]} alt="" onClick={e => e.stopPropagation()} />
+          {lightbox.srcs.length > 1 && <>
+            <button className="lightbox-prev" onClick={e => { e.stopPropagation(); setLightbox(l => ({...l, idx:(l.idx-1+l.srcs.length)%l.srcs.length})); }}>&#8249;</button>
+            <button className="lightbox-next" onClick={e => { e.stopPropagation(); setLightbox(l => ({...l, idx:(l.idx+1)%l.srcs.length})); }}>&#8250;</button>
+            <div className="lightbox-counter">{lightbox.idx+1} / {lightbox.srcs.length}</div>
+          </>}
         </div>
       )}
     </UserCtx.Provider>

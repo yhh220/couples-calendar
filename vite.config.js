@@ -7,16 +7,12 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      // Inject the service worker registration script into index.html automatically
       injectRegister: 'auto',
       workbox: {
-        // Cache all app-shell assets
-        globPatterns: ['**/*.{js,css,html,svg,ico,woff,woff2}'],
-        // For navigations (SPA): always serve index.html from cache when offline
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/__/, /\/api\//],
         runtimeCaching: [
-          // Cache Google Fonts stylesheets
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
             handler: 'StaleWhileRevalidate',
@@ -25,7 +21,6 @@ export default defineConfig({
               expiration: { maxEntries: 4, maxAgeSeconds: 60 * 60 * 24 * 365 },
             },
           },
-          // Cache Google Fonts files
           {
             urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
             handler: 'CacheFirst',
@@ -35,21 +30,39 @@ export default defineConfig({
               cacheableResponse: { statuses: [0, 200] },
             },
           },
+          {
+            urlPattern: /^https:\/\/firebasestorage\.googleapis\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'firebase-storage-cache',
+              expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
         ],
       },
+      includeAssets: ['favicon.svg', 'icons/icon-192.png', 'icons/icon-512.png'],
       manifest: {
         name: 'Calendar',
         short_name: 'Calendar',
-        description: 'Couples calendar — plans, dates, and reminders.',
-        start_url: '/',
-        display: 'standalone',
-        background_color: '#faf8f5',
+        description: 'Our private couples calendar — plans, dates, and reminders.',
         theme_color: '#dd4f68',
+        background_color: '#faf8f5',
+        display: 'standalone',
+        orientation: 'portrait',
+        scope: '/',
+        start_url: '/',
         icons: [
           {
-            src: '/favicon.svg',
-            sizes: 'any',
-            type: 'image/svg+xml',
+            src: 'icons/icon-192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any maskable',
+          },
+          {
+            src: 'icons/icon-512.png',
+            sizes: '512x512',
+            type: 'image/png',
             purpose: 'any maskable',
           },
         ],
