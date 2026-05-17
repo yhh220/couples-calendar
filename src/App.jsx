@@ -200,7 +200,8 @@ function normalizeEventInput(data, user) {
     allDay: isMultiDay ? true : Boolean(data.allDay),
     time: (isMultiDay || data.allDay) || !/^\d{2}:\d{2}$/.test(String(data.time || "")) ? null : data.time,
     repeat: Boolean(data.repeat && type === "anniversary"),
-    photo: safeImageSrc(data.photo) || null,
+    photos: Array.isArray(data.photos) ? data.photos.filter(s => safeImageSrc(s)).slice(0, 4) : (safeImageSrc(data.photo) ? [safeImageSrc(data.photo)] : []),
+    photo: null, // kept null; display code reads from photos[]
     private: !shared && Boolean(data.private),
     recurrence: data.recurrence || null,
   };
@@ -682,7 +683,8 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
           )}
           {evts.map((e, i) => {
             const cls = evClass(e);
-            const photoSrc = safeImageSrc(e.photo);
+            const evPhotos = (e.photos?.length ? e.photos : (e.photo ? [e.photo] : [])).filter(safeImageSrc);
+            const photoSrc = evPhotos[0] || null;
             const isExpanded = expandedId === (e.id + e.date);
             const ts = e.createdAt;
             const ut = e.updatedAt;
@@ -712,7 +714,12 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
                     <div className="ev-footer">由 {creator} 添加 · {timeStr}{edited ? " (已编辑)" : ""}</div>
                   )}
                 </div>
-                {photoSrc && <img className="ev-photo" src={photoSrc} alt="" onClick={() => onPhotoClick(photoSrc)} />}
+                {photoSrc && (
+                  <div className="ev-photo-wrap" onClick={ev => ev.stopPropagation()}>
+                    <img className="ev-photo" src={photoSrc} alt="" onClick={() => onPhotoClick(photoSrc)} />
+                    {evPhotos.length > 1 && <span className="ev-photo-count">+{evPhotos.length - 1}</span>}
+                  </div>
+                )}
                 {(canEdit(e) || canDelete(e)) && (
                   <div className="ev-actions">
                     {canEdit(e) && <button className="ev-action-btn" onClick={() => onEdit(e)} title="编辑"><Edit2 size={13} /></button>}
@@ -801,16 +808,15 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, v
   const [allDay, setAllDay] = useState(false);
   const [repeat, setRepeat] = useState(false);
   const [note, setNote] = useState("");
-  const [photo, setPhoto] = useState(null);
-  const [photoPreview, setPhotoPreview] = useState(null);
+  const [photos, setPhotos] = useState([]); // array of compressed data URLs
   const [isPrivate, setIsPrivate] = useState(false);
   const [recType, setRecType] = useState("none");
   const [recEnd, setRecEnd] = useState("");
   const [recWeekdays, setRecWeekdays] = useState([0,1,2,3,4,5,6]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [photoCleared, setPhotoCleared] = useState(false);
   const fileRef = useRef();
+  const MAX_PHOTOS = 4;
 
   useEffect(() => {
     if (!open) return;
@@ -823,9 +829,7 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, v
       setAllDay(Boolean(initEdit.allDay));
       setRepeat(Boolean(initEdit.repeat));
       setNote(initEdit.note || "");
-      setPhotoPreview(safeImageSrc(initEdit.photo));
-      setPhoto(null);
-      setPhotoCleared(false);
+      setPhotos(initEdit.photos?.length ? initEdit.photos.filter(s => safeImageSrc(s)) : (safeImageSrc(initEdit.photo) ? [initEdit.photo] : []));
       setIsPrivate(Boolean(initEdit.private));
       const rec = initEdit.recurrence;
       setRecType(rec?.type || "none");
@@ -839,30 +843,33 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, v
 
   const resetForm = () => {
     setTitle(""); setType(viewMode === "mine" ? "personal" : "together"); setTime(""); setNote(""); setEndDate("");
-    setAllDay(false); setRepeat(false); setPhoto(null); setPhotoPreview(null);
-    setError(""); setIsPrivate(false); setPhotoCleared(false);
+    setAllDay(false); setRepeat(false); setPhotos([]);
+    setError(""); setIsPrivate(false);
     setRecType("none"); setRecEnd(""); setRecWeekdays([0,1,2,3,4,5,6]);
   };
 
-  const handlePhoto = e => {
-    const file = e.target.files[0]; if (!file) return;
-    e.target.value = "";
-    setError("");
-    if (!ALLOWED_IMAGE_TYPES.has(file.type)) { setError("只支持 JPG、PNG、WEBP 或 GIF。"); return; }
-    if (file.size > LIMITS.imageBytes) { setError("图片不能超过 4MB。"); return; }
-    // Compress client-side: max 600×600 webp — keeps Firestore doc well under 1 MB
-    const img = new Image();
-    const url = URL.createObjectURL(file);
+  const compressPhoto = (file) => new Promise(res => {
+    const img = new Image(), url = URL.createObjectURL(file);
     img.onload = () => {
       URL.revokeObjectURL(url);
       const MAX = 600, sc = Math.min(MAX / img.width, MAX / img.height, 1);
       const w = Math.round(img.width * sc), h = Math.round(img.height * sc);
       const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
       cv.getContext("2d").drawImage(img, 0, 0, w, h);
-      const dataUrl = cv.toDataURL("image/webp", 0.82);
-      setPhoto(dataUrl); setPhotoPreview(dataUrl);
+      res(cv.toDataURL("image/webp", 0.82));
     };
     img.src = url;
+  });
+
+  const handlePhoto = async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    e.target.value = "";
+    setError("");
+    if (!ALLOWED_IMAGE_TYPES.has(file.type)) { setError("只支持 JPG、PNG、WEBP 或 GIF。"); return; }
+    if (file.size > LIMITS.imageBytes) { setError("图片不能超过 4MB。"); return; }
+    if (photos.length >= MAX_PHOTOS) { setError(`最多添加 ${MAX_PHOTOS} 张照片。`); return; }
+    const dataUrl = await compressPhoto(file);
+    setPhotos(prev => [...prev, dataUrl]);
   };
 
   const toggleWeekday = d => setRecWeekdays(ws => ws.includes(d) ? ws.filter(w => w !== d) : [...ws, d]);
@@ -877,19 +884,10 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, v
     if (!ALLOWED_TYPES.has(type)) { setError("类型无效。"); return; }
     setLoading(true); setError("");
     try {
-      let photoUrl = initEdit?.photo || null;
-      if (photoCleared) {
-        // Clean up old Firebase Storage file if applicable (legacy photos)
-        if (photoUrl) {
-          try { const p = storagePathFromUrl(photoUrl); if (p) await deleteObject(ref(storage, p)); } catch {}
-        }
-        photoUrl = null;
-      } else if (photo) {
-        // New photo is already a compressed data URL — store directly in Firestore
-        if (photoUrl) {
-          try { const p = storagePathFromUrl(photoUrl); if (p) await deleteObject(ref(storage, p)); } catch {}
-        }
-        photoUrl = photo;
+      // Clean up any legacy Firebase Storage photo on edit (best-effort)
+      const legacyUrl = initEdit?.photo || null;
+      if (legacyUrl && storagePathFromUrl(legacyUrl)) {
+        try { await deleteObject(ref(storage, storagePathFromUrl(legacyUrl))); } catch {}
       }
       const shared = type === "together" || type === "anniversary";
       const recurrence = recType === "none" ? null : {
@@ -906,7 +904,8 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, v
         note: safeNote, allDay,
         time: allDay ? null : time || null,
         repeat: repeat && type === "anniversary",
-        photo: photoUrl,
+        photos: photos.filter(s => safeImageSrc(s)),
+        photo: null, // legacy field cleared
         private: !shared && isPrivate,
         recurrence,
       };
@@ -1063,18 +1062,22 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, v
           </div>
           <div className="f-group" style={{marginBottom:0}}>
             <label className="f-label">照片（选填）</label>
-            <div className="photo-upload-area" onClick={() => !photoPreview && fileRef.current?.click()}>
-              <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handlePhoto} />
-              {photoPreview ? (
-                <div style={{position:"relative",display:"inline-block",width:"100%"}}>
-                  <img className="photo-preview-img" src={photoPreview} alt="" onClick={() => fileRef.current?.click()} />
-                  <button
-                    style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,.55)",border:"none",borderRadius:"50%",width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#fff",flexShrink:0}}
-                    onClick={e => { e.stopPropagation(); setPhoto(null); setPhotoPreview(null); setPhotoCleared(true); }}
-                    title="移除照片"
-                  ><X size={12} /></button>
+            <p className="f-hint">最多 {MAX_PHOTOS} 张 · 保存后在活动详情中查看和放大</p>
+            <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handlePhoto} />
+            <div className="photo-multi-row">
+              {photos.map((src, i) => (
+                <div key={i} className="photo-multi-item">
+                  <img src={src} alt="" draggable={false} />
+                  <button className="photo-multi-del" onClick={() => setPhotos(p => p.filter((_, j) => j !== i))} title="移除">
+                    <X size={10} />
+                  </button>
                 </div>
-              ) : <div className="photo-placeholder"><ImageIcon size={22} /><span>点击上传照片</span></div>}
+              ))}
+              {photos.length < MAX_PHOTOS && (
+                <button className="photo-multi-add" onClick={() => fileRef.current?.click()} title="添加照片">
+                  <Plus size={20} />
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1194,7 +1197,10 @@ function SearchOverlay({ events, onClose, onJumpTo }) {
 // PHOTO STRIP (between detail-card and ov-card)
 // ─────────────────────────────────────────
 function PhotoStrip({ events, onPhotoClick, onEdit }) {
-  const photos = events.map(e => ({ src: safeImageSrc(e.photo), event: e })).filter(p => p.src);
+  const photos = events.flatMap(e => {
+    const srcs = e.photos?.length ? e.photos : (e.photo ? [e.photo] : []);
+    return srcs.filter(safeImageSrc).map(src => ({ src, event: e }));
+  });
   if (photos.length === 0) return null;
   return (
     <div className="photo-strip">
@@ -1407,7 +1413,12 @@ function StickerModal({ onClose, date, isShared = false }) {
     <div className="diary-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="sticker-panel">
         <div className="diary-hdr">
-          <span className="diary-title">🌸 {date ? fmtDate(date) : ""}</span>
+          <div>
+            <span className="diary-title">🌸 {date ? fmtDate(date) : ""}</span>
+            <div style={{fontSize:11,color:"var(--muted)",marginTop:2,fontWeight:600}}>
+              {isShared ? "共享贴纸 · 两人都能看到" : "私人贴纸 · 只有自己看到"}
+            </div>
+          </div>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
             {saveErr && <span style={{fontSize:12,color:"var(--together)",fontWeight:700}}>{saveErr}</span>}
             <button className="pbtn" onClick={onClose}>取消</button>

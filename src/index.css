@@ -505,7 +505,14 @@ em { color: var(--together); font-style: normal; }
 .ev-meta, .ev-footer { color: var(--muted); }
 .ev-meta { font-size: 12px; margin-top: 2px; }
 .ev-footer { font-size: 10px; margin-top: 3px; }
-.ev-photo { width: 44px; height: 44px; border-radius: 10px; object-fit: cover; flex-shrink: 0; cursor: pointer; }
+.ev-photo-wrap { position: relative; flex-shrink: 0; }
+.ev-photo { width: 44px; height: 44px; border-radius: 10px; object-fit: cover; cursor: pointer; display: block; }
+.ev-photo-count {
+  position: absolute; bottom: 3px; right: 3px;
+  background: rgba(0,0,0,0.6); color: #fff;
+  font-size: 9px; font-weight: 800;
+  padding: 1px 4px; border-radius: 5px; line-height: 1.4;
+}
 
 .ev-actions { display: flex; flex-direction: column; gap: 4px; opacity: 0; transition: opacity .15s; flex-shrink: 0; }
 .ev-item:hover .ev-actions { opacity: 1; }
@@ -626,7 +633,8 @@ em { color: var(--together); font-style: normal; }
    FORM ELEMENTS
 ───────────────────────────────────────── */
 .f-group { margin-bottom: 14px; text-align: left; }
-.f-label { display: block; font-size: 12px; color: var(--muted); font-weight: 700; margin-bottom: 6px; letter-spacing: .03em; }
+.f-label { display: block; font-size: 12px; color: var(--muted); font-weight: 700; margin-bottom: 4px; letter-spacing: .03em; }
+.f-hint { font-size: 11px; color: var(--muted); font-weight: 600; margin: 0 0 8px; opacity: .75; }
 .f-input {
   width: 100%; min-height: 44px;
   border: 1px solid var(--line);
@@ -755,6 +763,34 @@ select.f-input { cursor: pointer; }
 .photo-placeholder { color: var(--muted); display: grid; gap: 8px; justify-items: center; font-size: 13px; }
 .photo-placeholder svg { width: 22px; height: 22px; }
 .photo-preview-img { width: 100%; max-height: 200px; object-fit: cover; }
+
+/* Multi-photo row */
+.photo-multi-row {
+  display: flex; gap: 8px; flex-wrap: wrap;
+}
+.photo-multi-item {
+  position: relative; width: 72px; height: 72px;
+  border-radius: 12px; overflow: hidden;
+  border: 1px solid var(--line); flex-shrink: 0;
+}
+.photo-multi-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo-multi-del {
+  position: absolute; top: 3px; right: 3px;
+  width: 18px; height: 18px;
+  background: rgba(0,0,0,0.58); color: #fff;
+  border: none; border-radius: 50%; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.photo-multi-add {
+  width: 72px; height: 72px; flex-shrink: 0;
+  border-radius: 12px;
+  border: 1.5px dashed var(--line);
+  background: var(--surface-strong);
+  color: var(--muted); cursor: pointer;
+  display: grid; place-items: center;
+  transition: border-color .14s, color .14s;
+}
+.photo-multi-add:hover { border-color: var(--together); color: var(--together); }
 
 /* ─────────────────────────────────────────
    DELETE POPUP
