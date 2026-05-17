@@ -2,7 +2,6 @@ import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
-import { getMessaging, getToken, onMessage } from "firebase/messaging";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDi7XwLcg8nGmYbaEqXBLvSFoQ_W9ZTqgQ",
@@ -19,20 +18,12 @@ export const provider = new GoogleAuthProvider();
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 
-// FCM — silently null in unsupported browsers (Firefox, old Safari)
-export const messaging = (() => {
-  try { return getMessaging(app); } catch { return null; }
-})();
-
-export { onMessage };
-
-export async function registerFcmToken(vapidKey) {
-  if (!messaging || !vapidKey) return null;
-  try {
-    const sw = await navigator.serviceWorker.ready;
-    return await getToken(messaging, { vapidKey, serviceWorkerRegistration: sw });
-  } catch { return null; }
-}
+// FCM messaging disabled until VAPID key is configured —
+// firebase/messaging is dynamically imported at runtime so it can
+// never crash the app on unsupported browsers (old iOS Safari, etc.)
+export const messaging = null;
+export const onMessage = () => () => {};
+export const registerFcmToken = async () => null;
 
 enableIndexedDbPersistence(db).catch(err => {
   if (err.code === "failed-precondition") {
