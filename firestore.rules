@@ -13,8 +13,7 @@ service cloud.firestore {
     }
 
     match /events/{eventId} {
-      allow read: if isAuthorized() &&
-                     (resource.data.private != true || isOwner());
+      allow read: if isAuthorized();
       allow create: if isAuthorized() &&
                        request.resource.data.ownerEmail == request.auth.token.email;
       // Both users may edit/delete shared events (together / anniversary).

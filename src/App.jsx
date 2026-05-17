@@ -10,7 +10,7 @@ import { auth, provider, db, storage, messaging, onMessage, registerFcmToken } f
 import { signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from "firebase/auth";
 import {
   collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, where,
-  setDoc, getDoc, updateDoc, serverTimestamp,
+  setDoc, getDoc, updateDoc, serverTimestamp, enableNetwork,
 } from "firebase/firestore";
 import { ref, uploadString, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { getHolidayForDate, MY_HOLIDAYS } from "./holidays";
@@ -2478,6 +2478,15 @@ function AppContent() {
       }
     });
     return unsub;
+  }, []);
+
+  // Re-enable Firestore network when app comes back to foreground (iOS PWA kills WebSockets)
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") enableNetwork(db).catch(() => {});
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, []);
 
   // Auto-scroll to sidebar when date selected on mobile
