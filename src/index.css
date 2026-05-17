@@ -1637,3 +1637,26 @@ html.theme-ready :is(
 }
 .notif-toast-title { font-size: 13px; font-weight: 700; color: var(--text); }
 .notif-toast-body { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+/* ───────────────────────────────────────── */
+/* HOVER FX (inspired by itshover.com)       */
+/* ───────────────────────────────────────── */
+.icon-btn svg, .btn-add svg, .fab svg, .btn-submit svg, .diary-draw-btn svg, .cal-nav-btn svg, .ev-action-btn svg, .profile-avatar-btn svg, .search-btn svg {
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.icon-btn:hover svg, .diary-draw-btn:hover svg, .search-btn:hover svg {
+  transform: scale(1.15) rotate(-6deg);
+}
+
+.cal-nav-btn:hover svg, .profile-avatar-btn:hover svg, .btn-submit:hover svg {
+  transform: scale(1.12);
+}
+
+.btn-add:hover svg, .fab:hover svg {
+  transform: rotate(90deg) scale(1.1);
+}
+
+.ev-action-btn:hover svg {
+  transform: scale(1.1) translateY(-1px);
+}

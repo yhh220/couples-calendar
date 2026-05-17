@@ -4,7 +4,7 @@ import {
   Heart, Sun, Moon, Plus, ChevronLeft, ChevronRight, Check, X,
   LogOut, CalendarIcon, Flag, Star, Briefcase, FileText,
   Users, ImageIcon, Cake, Search, User, Lock, MessageCircle,
-  Edit2, BookOpen, WifiOff, GraduationCap, ChevronDown, ChevronUp, Trash2, Smile, Camera, PenLine, Pencil,
+  Edit2, BookOpen, WifiOff, GraduationCap, ChevronDown, ChevronUp, Trash2, Smile, Camera, PenLine, Pencil, HeartCrack, Wrench
 } from "lucide-react";
 import { auth, provider, db, storage, messaging, onMessage, registerFcmToken } from "./firebase";
 import { signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from "firebase/auth";
@@ -230,7 +230,7 @@ class AppErrorBoundary extends Component {
     if (this.state.hasError) return (
       <div className="crash-screen">
         <div className="crash-card">
-          <div className="crash-emoji">💔</div>
+          <div className="crash-emoji" style={{ color: "var(--together)", marginBottom: 12 }}><HeartCrack size={48} strokeWidth={1.5} /></div>
           <div className="crash-title">出了点问题</div>
           <p className="crash-sub">页面遇到了错误。清理本地缓存后重试，若问题持续请刷新浏览器。</p>
           <button className="btn-submit" onClick={this.reset}>清理缓存并重启</button>
@@ -323,7 +323,7 @@ function MaintenanceScreen() {
   return (
     <div className="loading-screen">
       <div className="loading-card">
-        <div className="loading-heart" style={{fontSize:36}}>🔧</div>
+        <div className="loading-heart" style={{ color: "var(--muted)", marginBottom: 16 }}><Wrench size={36} strokeWidth={1.5} /></div>
         <div className="loading-title">维护中</div>
         <p style={{color:"var(--muted)",fontSize:13,textAlign:"center",margin:"4px 0 0",lineHeight:1.6}}>
           我们正在更新日历<br />请稍后再回来
@@ -611,7 +611,7 @@ function CommentsSection({ eventId }) {
       {comments.length === 0 && <div style={{color:"var(--muted)",fontSize:12,textAlign:"center",padding:"8px 0"}}>还没有评论</div>}
       {comments.map(c => (
         <div key={c.id} className={`comment ${c.ownerEmail === HIM_EMAIL ? "him" : "her"}`}>
-          <span className="comment-avatar">{c.ownerEmail === HIM_EMAIL ? "🖤" : "🩷"}</span>
+          <span className="comment-avatar" style={{ color: c.ownerEmail === HIM_EMAIL ? "var(--him)" : "var(--her)", display: "flex", alignItems: "center", justifyContent: "center" }}><Heart fill="currentColor" strokeWidth={0} size={16} /></span>
           <span className="comment-text">{c.text}</span>
         </div>
       ))}
@@ -740,7 +740,7 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
           {selDate && drawingData?.[selDate] && (
             <div className="sidebar-drawing-card" onClick={() => setDiaryDraw(selDate)} style={{ marginBottom: 12, borderRadius: 16, overflow: "hidden", border: "1px solid var(--line)", background: "var(--surface-strong)", cursor: "pointer", position: "relative" }}>
               <img src={drawingData[selDate]} alt="画板" style={{ width: "100%", display: "block" }} />
-              <div style={{ position: "absolute", bottom: 6, right: 8, fontSize: 11, color: "var(--muted)", fontWeight: 700, background: "var(--surface)", padding: "2px 6px", borderRadius: 8, opacity: 0.8 }}>✏️ 画板</div>
+              <div style={{ position: "absolute", bottom: 6, right: 8, fontSize: 11, color: "var(--muted)", fontWeight: 700, background: "var(--surface)", padding: "4px 8px", borderRadius: 8, opacity: 0.8, display: "flex", alignItems: "center", gap: 4 }}><PenLine size={12} /> 画板</div>
             </div>
           )}
           {holiday && (
@@ -2119,7 +2119,7 @@ function DrawingModal({ onClose, date, isShared }) {
       <div className="drawing-panel">
         <div className="diary-hdr">
           <div>
-            <div className="diary-title">✏️ {fmtDate(date)}</div>
+            <div className="diary-title" style={{ display: "flex", alignItems: "center", gap: 6 }}><PenLine size={18} /> {fmtDate(date)}</div>
             <div className="diary-sub">{isShared ? "共享画板 · 两人都能看到" : "私人画板 · 只有自己看到"}</div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
