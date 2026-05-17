@@ -1760,6 +1760,7 @@ function DrawingModal({ onClose, date, isShared }) {
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [savingSticker, setSavingSticker] = useState(false);
 
   const commitRef = useRef(null);
   const activeRef = useRef(null);
@@ -2025,6 +2026,94 @@ function DrawingModal({ onClose, date, isShared }) {
     }
   };
 
+  const saveAsSticker = async () => {
+    const canvas = commitRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const w = canvas.width;
+    const h = canvas.height;
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const data = imgData.data;
+
+    let minX = w, minY = h, maxX = 0, maxY = 0;
+    let hasPixels = false;
+
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const idx = (y * w + x) * 4;
+        const r = data[idx];
+        const g = data[idx+1];
+        const b = data[idx+2];
+        const a = data[idx+3];
+        // Identify non-white pixels
+        if (a > 0 && (r < 250 || g < 250 || b < 250)) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+          hasPixels = true;
+        } else {
+          // Make white background transparent
+          data[idx+3] = 0;
+        }
+      }
+    }
+
+    if (!hasPixels) {
+      alert("画板是空的！");
+      return;
+    }
+
+    const pad = 10;
+    minX = Math.max(0, minX - pad);
+    minY = Math.max(0, minY - pad);
+    maxX = Math.min(w, maxX + pad);
+    maxY = Math.min(h, maxY + pad);
+
+    const cropW = maxX - minX;
+    const cropH = maxY - minY;
+
+    const tempCanvas = document.createElement("canvas");
+    tempCanvas.width = cropW;
+    tempCanvas.height = cropH;
+    const tempCtx = tempCanvas.getContext("2d");
+    
+    const cropImgData = tempCtx.createImageData(cropW, cropH);
+    for (let cy = 0; cy < cropH; cy++) {
+      for (let cx = 0; cx < cropW; cx++) {
+        const srcIdx = ((minY + cy) * w + (minX + cx)) * 4;
+        const dstIdx = (cy * cropW + cx) * 4;
+        cropImgData.data[dstIdx] = data[srcIdx];
+        cropImgData.data[dstIdx+1] = data[srcIdx+1];
+        cropImgData.data[dstIdx+2] = data[srcIdx+2];
+        cropImgData.data[dstIdx+3] = data[srcIdx+3];
+      }
+    }
+    tempCtx.putImageData(cropImgData, 0, 0);
+
+    tempCanvas.toBlob(async blob => {
+      if (!blob) return;
+      try {
+        setSavingSticker(true);
+        const fileRef = ref(storage, `stickers/${user.uid}/${Date.now()}_drawing.png`);
+        await uploadBytes(fileRef, blob);
+        const url = await getDownloadURL(fileRef);
+        
+        const userDoc = await getDoc(doc(db, "users", user.uid));
+        const library = userDoc.exists() && userDoc.data().stickers ? userDoc.data().stickers : [];
+        const newLib = [{ id: Date.now().toString(), imageUrl: url }, ...library];
+        await setDoc(doc(db, "users", user.uid), { stickers: newLib }, { merge: true });
+        
+        alert("成功保存为贴纸！你可以在贴纸库中找到它。");
+      } catch (e) {
+        console.error(e);
+        alert("保存失败");
+      } finally {
+        setSavingSticker(false);
+      }
+    }, "image/png");
+  };
+
   return (
     <div className="diary-overlay" onClick={e => e.target.classList.contains("diary-overlay") && onClose()}>
       <div className="drawing-panel">
@@ -2035,7 +2124,10 @@ function DrawingModal({ onClose, date, isShared }) {
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             {saveErr && <span style={{ fontSize: 12, color: "#dd4f68" }}>{saveErr}</span>}
-            <button className="btn-submit" style={{ padding: "6px 14px", fontSize: 13 }} onClick={save} disabled={saving || loading}>
+            <button className="btn-submit" style={{ padding: "6px 14px", fontSize: 13, background: "rgba(127,127,127,0.15)", color: "var(--text)", boxShadow: "none" }} onClick={saveAsSticker} disabled={savingSticker || saving || loading}>
+              {savingSticker ? "处理中..." : "存为贴纸"}
+            </button>
+            <button className="btn-submit" style={{ padding: "6px 14px", fontSize: 13 }} onClick={save} disabled={saving || loading || savingSticker}>
               {saving ? "保存中..." : "保存"}
             </button>
             <button className="modal-close" onClick={onClose}><X size={16} /></button>
