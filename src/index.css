@@ -1120,9 +1120,9 @@ select.f-input { cursor: pointer; }
   .cal-card { padding: 14px 10px; }
   .weekdays, .days-grid { gap: 5px; }
   .weekday { font-size: 11px; padding: 4px 0; }
-  .day-cell { min-height: 66px; padding: 7px 6px; border-radius: 12px; }
+  .day-cell { min-height: 52px; padding: 6px 5px; border-radius: 12px; }
   .day-num { font-size: 13px; }
-  .day-pips { margin-top: 12px; gap: 3px; }
+  .day-pips { margin-top: 6px; gap: 3px; }
   .pip { width: 6px; height: 6px; }
   .legend { justify-content: center; gap: 10px; }
 
@@ -1180,7 +1180,7 @@ select.f-input { cursor: pointer; }
   .header-actions { gap: 4px; }
 
   /* Timer */
-  .timer-banner { flex-direction: column; gap: 10px; padding: 14px 16px; }
+  .timer-banner { flex-direction: column; align-items: flex-start; gap: 10px; padding: 14px 16px; }
   .timer-heart { width: 44px; height: 44px; }
   .timer-heart svg { width: 20px; height: 20px; }
   .timer-count { font-size: 19px; }
@@ -1201,9 +1201,9 @@ select.f-input { cursor: pointer; }
   .cal-card { padding: 10px 6px; }
   .weekdays, .days-grid { gap: 3px; }
   .weekday { font-size: 10px; padding: 3px 0; }
-  .day-cell { min-height: 54px; padding: 5px 4px; border-radius: 10px; }
+  .day-cell { min-height: 44px; padding: 5px 4px; border-radius: 10px; }
   .day-num { font-size: 12px; }
-  .day-pips { margin-top: 8px; gap: 2px; }
+  .day-pips { margin-top: 4px; gap: 2px; }
   .pip { width: 5px; height: 5px; }
   .day-sticker-thumb { width: 16px; height: 16px; }
   .legend { gap: 7px; font-size: 10px; }
