@@ -1365,37 +1365,47 @@ select.f-input { cursor: pointer; }
 }
 
 /* ─────────────────────────────────────────
-   THEME TRANSITION — View Transitions API
-   Circular reveal from the toggle button.
-   Supported: Chrome 111+, Safari 18+
+   THEME TRANSITION
+   @property makes CSS custom properties animatable.
+   When data-theme changes, :root interpolates all
+   color tokens — every element using var() transitions
+   automatically, zero screenshot overhead.
+   Chrome 85+, Safari 16.4+, Edge 85+.
+   Firefox fallback: per-element transitions below.
 ───────────────────────────────────────── */
-::view-transition-old(root) {
-  animation: 220ms ease-out both;
-}
-::view-transition-new(root) {
-  animation: 220ms ease-in both;
-}
-@media (prefers-reduced-motion: reduce) {
-  ::view-transition-old(root),
-  ::view-transition-new(root) { animation: none; }
+@property --bg             { syntax: '<color>'; inherits: true; initial-value: #faf8f5; }
+@property --surface        { syntax: '<color>'; inherits: true; initial-value: rgba(255,255,255,0.88); }
+@property --surface-strong { syntax: '<color>'; inherits: true; initial-value: #ffffff; }
+@property --text           { syntax: '<color>'; inherits: true; initial-value: #2c2c3a; }
+@property --muted          { syntax: '<color>'; inherits: true; initial-value: #7d727d; }
+@property --line           { syntax: '<color>'; inherits: true; initial-value: rgba(80,53,72,0.14); }
+@property --picker-overlay { syntax: '<color>'; inherits: true; initial-value: rgba(250,248,245,0.97); }
+
+/* .theme-ready added to <html> on mount — prevents transition on initial dark-mode load */
+:root.theme-ready {
+  transition:
+    --bg             260ms ease,
+    --surface        260ms ease,
+    --surface-strong 260ms ease,
+    --text           260ms ease,
+    --muted          260ms ease,
+    --line           260ms ease,
+    --picker-overlay 260ms ease;
 }
 
-/* ─────────────────────────────────────────
-   THEME TRANSITION — CSS fallback
-   For Firefox / browsers without View Transitions.
-   .theme-ready class added on mount to prevent
-   transitions firing on the initial render.
-───────────────────────────────────────── */
-.theme-ready :is(
+/* Firefox fallback (no @property support) */
+html.theme-ready :is(
   body, .header, .cal-card, .detail-card, .ov-card,
   .timer-banner, .cd-card, .ev-item, .modal,
   .sticker-panel, .photo-strip, .view-toggle, .icon-btn, .fab, .sidebar
 ) {
-  transition: background-color 350ms ease, color 300ms ease,
-              border-color 300ms ease, box-shadow 300ms ease;
+  transition: background-color 260ms ease, color 240ms ease,
+              border-color 240ms ease, box-shadow 240ms ease;
 }
+
 @media (prefers-reduced-motion: reduce) {
-  .theme-ready :is(
+  :root.theme-ready { transition: none; }
+  html.theme-ready :is(
     body, .header, .cal-card, .detail-card, .ov-card,
     .timer-banner, .cd-card, .ev-item, .modal,
     .sticker-panel, .photo-strip, .view-toggle, .icon-btn, .fab, .sidebar

@@ -1772,19 +1772,11 @@ function AppContent() {
     storageSet("theme", theme);
   }, [theme]);
 
-  const toggleTheme = (e) => {
-    const newTheme = theme === "light" ? "dark" : "light";
-    if (!document.startViewTransition) { setTheme(newTheme); return; }
-    // Apply data-theme directly — no flushSync / React re-render during capture
-    const t = document.startViewTransition(() => {
-      document.documentElement.setAttribute("data-theme", newTheme);
-      storageSet("theme", newTheme);
-    });
-    // Sync React state after animation so icon updates without blocking
-    t.finished.then(() => setTheme(newTheme));
-  };
+  const toggleTheme = () => setTheme(t => t === "light" ? "dark" : "light");
 
-  useEffect(() => { document.body.classList.add("theme-ready"); }, []);
+  // Gate CSS token transitions until after first render to prevent
+  // a flash-transition on initial dark-mode load
+  useEffect(() => { document.documentElement.classList.add("theme-ready"); }, []);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, u => {
