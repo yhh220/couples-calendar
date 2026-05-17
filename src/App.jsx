@@ -1191,7 +1191,13 @@ function StickerModal({ onClose, date, isShared = false }) {
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState("");
   const canvasRef = useRef();
-  const dragRef = useRef(null);
+  // Multi-pointer tracking: pointerId → {x, y}
+  const ptrsRef = useRef(new Map());
+  // Current gesture state
+  const gestureRef = useRef(null);
+  // Mirror placements into ref so gesture handlers read latest values without stale closures
+  const placementsRef = useRef([]);
+  useEffect(() => { placementsRef.current = placements; }, [placements]);
 
   useEffect(() => {
     document.body.classList.add("diary-open");
@@ -1236,28 +1242,110 @@ function StickerModal({ onClose, date, isShared = false }) {
   const placeSticker = (imageUrl) => {
     const cw = canvasRef.current?.offsetWidth || 300;
     const id = `p${Date.now()}${Math.random().toString(36).slice(2)}`;
-    setPlacements(prev => [...prev, { id, imageUrl, x: 0.5, y: 0.4, w: Math.round(cw * 0.36), opacity: 1.0 }]);
+    setPlacements(prev => [...prev, { id, imageUrl, x: 0.5, y: 0.4, w: Math.round(cw * 0.36), opacity: 1.0, rotation: 0 }]);
     setSelectedId(id);
   };
 
-  const onStickerDown = (e, p) => {
-    e.stopPropagation();
-    setSelectedId(p.id);
+  // ── Unified canvas-level pointer handling ──────────────────────────────────
+  // All events are handled here so multi-touch (Apple Pencil + finger,
+  // two-finger pinch/rotate) work correctly.
+  // Apple Pencil = pointerType "pen", finger = "touch", mouse = "mouse".
+  // Palm rejection: only deselect on empty-canvas tap for pen/mouse, not touch.
+
+  const onCanvasDown = (e) => {
+    try { canvasRef.current.setPointerCapture(e.pointerId); } catch {}
+    ptrsRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const count = ptrsRef.current.size;
     const rect = canvasRef.current.getBoundingClientRect();
-    dragRef.current = { id: p.id, cx: e.clientX, cy: e.clientY, ox: p.x, oy: p.y, cw: rect.width, ch: rect.height };
-    e.currentTarget.setPointerCapture(e.pointerId);
+
+    // Detect which sticker (if any) was hit — bubbles up from sticker child
+    const hitEl = e.target.closest('[data-sid]');
+    const hitId = hitEl?.dataset.sid ?? null;
+
+    if (count === 1) {
+      if (hitId) {
+        setSelectedId(hitId);
+        const p = placementsRef.current.find(x => x.id === hitId);
+        gestureRef.current = {
+          type: 'drag', id: hitId,
+          sx: e.clientX, sy: e.clientY,
+          ox: p.x, oy: p.y,
+          cw: rect.width, ch: rect.height,
+        };
+      } else {
+        // Palm/finger tap on empty canvas should not deselect; pencil/mouse can
+        if (e.pointerType !== 'touch') setSelectedId(null);
+        gestureRef.current = null;
+      }
+    } else if (count === 2) {
+      // Second pointer down → switch to pinch/rotate on the active sticker
+      const activeId = gestureRef.current?.id ?? hitId;
+      if (activeId) {
+        const pts = Array.from(ptrsRef.current.values());
+        const dx = pts[1].x - pts[0].x, dy = pts[1].y - pts[0].y;
+        const p = placementsRef.current.find(x => x.id === activeId);
+        if (p) {
+          gestureRef.current = {
+            type: 'pinch', id: activeId,
+            initDist: Math.hypot(dx, dy),
+            initAngle: Math.atan2(dy, dx),
+            initW: p.w,
+            initRot: p.rotation ?? 0,
+          };
+        }
+      }
+    }
   };
 
-  const onStickerMove = (e) => {
-    const d = dragRef.current; if (!d) return;
-    setPlacements(prev => prev.map(p => p.id === d.id ? {
-      ...p,
-      x: Math.max(0, Math.min(1, d.ox + (e.clientX - d.cx) / d.cw)),
-      y: Math.max(0, Math.min(1, d.oy + (e.clientY - d.cy) / d.ch)),
-    } : p));
+  const onCanvasMove = (e) => {
+    if (!ptrsRef.current.has(e.pointerId)) return;
+    ptrsRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const g = gestureRef.current;
+    if (!g) return;
+    const count = ptrsRef.current.size;
+
+    if (g.type === 'drag' && count === 1) {
+      setPlacements(prev => prev.map(p => p.id === g.id ? {
+        ...p,
+        x: Math.max(0, Math.min(1, g.ox + (e.clientX - g.sx) / g.cw)),
+        y: Math.max(0, Math.min(1, g.oy + (e.clientY - g.sy) / g.ch)),
+      } : p));
+    } else if (g.type === 'pinch' && count === 2) {
+      const pts = Array.from(ptrsRef.current.values());
+      const dx = pts[1].x - pts[0].x, dy = pts[1].y - pts[0].y;
+      const dist = Math.hypot(dx, dy);
+      const angle = Math.atan2(dy, dx);
+      const scale = dist / g.initDist;
+      const rotation = g.initRot + (angle - g.initAngle) * (180 / Math.PI);
+      setPlacements(prev => prev.map(p => p.id === g.id ? {
+        ...p,
+        w: Math.max(24, Math.min(320, Math.round(g.initW * scale))),
+        rotation,
+      } : p));
+    }
   };
 
-  const onStickerUp = () => { dragRef.current = null; };
+  const onCanvasUp = (e) => {
+    ptrsRef.current.delete(e.pointerId);
+    const count = ptrsRef.current.size;
+    if (count === 0) {
+      gestureRef.current = null;
+    } else if (count === 1 && gestureRef.current?.type === 'pinch') {
+      // One finger lifted — resume drag from remaining pointer position
+      const g = gestureRef.current;
+      const [, pos] = Array.from(ptrsRef.current.entries())[0];
+      const rect = canvasRef.current.getBoundingClientRect();
+      const p = placementsRef.current.find(x => x.id === g.id);
+      if (p) {
+        gestureRef.current = {
+          type: 'drag', id: g.id,
+          sx: pos.x, sy: pos.y,
+          ox: p.x, oy: p.y,
+          cw: rect.width, ch: rect.height,
+        };
+      }
+    }
+  };
 
   const upd = (patch) => setPlacements(prev => prev.map(p => p.id === selectedId ? { ...p, ...patch } : p));
 
@@ -1292,23 +1380,33 @@ function StickerModal({ onClose, date, isShared = false }) {
           </div>
         </div>
 
-        <div className="sticker-canvas" ref={canvasRef} onPointerDown={() => setSelectedId(null)}>
+        <div className="sticker-canvas" ref={canvasRef}
+          onPointerDown={onCanvasDown}
+          onPointerMove={onCanvasMove}
+          onPointerUp={onCanvasUp}
+          onPointerCancel={onCanvasUp}
+        >
           {loading && <div className="diary-loading">加载中...</div>}
           {placements.map(p => (
             <div key={p.id}
+              data-sid={p.id}
               className={`sticker-placed${p.id === selectedId ? " active" : ""}`}
-              style={{ left:`${p.x*100}%`, top:`${p.y*100}%`, width:`${p.w}px`, height:`${p.w}px`, opacity:p.opacity }}
-              onPointerDown={e => onStickerDown(e, p)}
-              onPointerMove={onStickerMove}
-              onPointerUp={onStickerUp}
-              onPointerCancel={onStickerUp}
+              style={{
+                left: `${p.x*100}%`,
+                top: `${p.y*100}%`,
+                width: `${p.w}px`,
+                height: `${p.w}px`,
+                opacity: p.opacity,
+                transform: `translate(-50%,-50%) rotate(${p.rotation ?? 0}deg)`,
+              }}
             >
-              <img src={p.imageUrl} alt="" draggable={false} style={{width:"100%",height:"100%",objectFit:"contain",pointerEvents:"none",userSelect:"none"}} />
+              <img src={p.imageUrl} alt="" draggable={false}
+                style={{width:"100%",height:"100%",objectFit:"contain",pointerEvents:"none",userSelect:"none"}} />
             </div>
           ))}
           {!loading && placements.length === 0 && (
-            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",color:"var(--muted)",fontSize:13,fontWeight:600,pointerEvents:"none"}}>
-              从下方选择贴纸 · 拖动来移动
+            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",color:"var(--muted)",fontSize:13,fontWeight:600,pointerEvents:"none",textAlign:"center",padding:"0 24px"}}>
+              从下方选择贴纸放到画布
             </div>
           )}
         </div>
@@ -1326,6 +1424,16 @@ function StickerModal({ onClose, date, isShared = false }) {
               <input type="range" min={24} max={280} step={4} value={sel.w}
                 onChange={e => upd({ w: +e.target.value })} />
               <span className="sticker-ctrl-val">{sel.w}px</span>
+            </div>
+            <div className="sticker-ctrl-row">
+              <span className="sticker-ctrl-lbl">角度</span>
+              <input type="range" min={-180} max={180} step={1} value={Math.round(sel.rotation ?? 0)}
+                onChange={e => upd({ rotation: +e.target.value })} />
+              <span className="sticker-ctrl-val">{Math.round(sel.rotation ?? 0)}°
+                {Math.round(sel.rotation ?? 0) !== 0 && (
+                  <button className="sticker-rot-reset" onClick={() => upd({ rotation: 0 })}>↺</button>
+                )}
+              </span>
             </div>
             <button className="sticker-del-btn" onClick={() => { setPlacements(p => p.filter(x => x.id !== selectedId)); setSelectedId(null); }}>
               🗑 移除贴纸
@@ -1347,7 +1455,7 @@ function StickerModal({ onClose, date, isShared = false }) {
             ))}
           </div>
           <p className="sticker-lib-hint">
-            {library.length === 0 ? "点 + 上传贴纸图片" : "点贴纸放到画布 · 拖动移位 · 滑块调整大小/透明度"}
+            {library.length === 0 ? "点 + 上传贴纸图片" : "单指拖动移位 · 双指捏合旋转缩放 · Apple Pencil 精准拖动"}
           </p>
         </div>
       </div>
