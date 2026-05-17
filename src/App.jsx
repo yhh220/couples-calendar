@@ -452,7 +452,7 @@ function MonthPicker({ curDate, onSelect, onClose }) {
 // ─────────────────────────────────────────
 // CALENDAR
 // ─────────────────────────────────────────
-function Calendar({ curDate, events, selDate, onSelectDay, onChangeMonth, onJumpTo, viewMode, diaryImages = {} }) {
+function Calendar({ curDate, events, selDate, onSelectDay, onChangeMonth, onJumpTo, viewMode, stickerData = {} }) {
   const { user, ME } = useMe();
   const y = curDate.getFullYear(), m = curDate.getMonth();
   const [showPicker, setShowPicker] = useState(false);
@@ -499,7 +499,10 @@ function Calendar({ curDate, events, selDate, onSelectDay, onChangeMonth, onJump
           if (holiday) cls += " has-holiday";
           return (
             <div key={s} className={cls} onClick={() => onSelectDay(s)}>
-              {diaryImages[s] && <img src={diaryImages[s]} className="day-sketch" alt="" />}
+              {stickerData[s]?.map((p, i) => (
+                <img key={i} src={p.imageUrl} className="day-sticker-thumb"
+                  style={{ left:`${p.x*100}%`, top:`${p.y*100}%`, opacity:p.opacity }} alt="" />
+              ))}
               <div className="day-num">{day}</div>
               <div className="day-pips">
                 {evts.slice(0, 6).map((e, i) => <div key={i} className={`pip ${evClass(e)}`} />)}
@@ -777,7 +780,7 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
           </div>
         )}
       </div>
-      {diaryDate && <DiaryModal date={diaryDate} isShared={viewMode === "shared"} onClose={() => setDiaryDate(null)} />}
+      {diaryDate && <StickerModal date={diaryDate} isShared={viewMode === "shared"} onClose={() => setDiaryDate(null)} />}
     </div>
   );
 }
@@ -1177,42 +1180,19 @@ function SearchOverlay({ events, onClose, onJumpTo }) {
 }
 
 // ─────────────────────────────────────────
-// DIARY CANVAS
+// STICKER MODAL
 // ─────────────────────────────────────────
-const DIARY_PENS = [
-  { key:"pen",    label:"钢笔",  alpha:1.0,  widthMult:1.0,  cap:"round" },
-  { key:"brush",  label:"毛笔",  alpha:0.9,  widthMult:2.2,  cap:"round" },
-  { key:"marker", label:"马克笔",alpha:0.55, widthMult:3.5,  cap:"square" },
-  { key:"hi",     label:"荧光笔",alpha:0.38, widthMult:6.0,  cap:"square" },
-];
-const DIARY_SHAPES = ["free","line","rect","circle"];
-const DIARY_SHAPE_LABELS = { free:"自由", line:"直线", rect:"矩形", circle:"椭圆" };
-const DIARY_COLORS = [
-  "#1a1a2e","#ffffff","#e8809a","#dd4f68",
-  "#5488e8","#23a071","#c38321","#7b61ff",
-  "#f97316","#06b6d4","#84cc16","#ef4444",
-];
-const DIARY_SIZES = [2, 5, 10, 18];
-const DIARY_ERASER_SIZES = [12, 28, 52];
-
-function DiaryModal({ onClose, date, isShared = false }) {
+function StickerModal({ onClose, date, isShared = false }) {
   const { user } = useMe();
-  const canvasRef = useRef();
-  const snapshotRef = useRef(null);
-  const startPosRef = useRef(null);
-  const isDrawingRef = useRef(false);
-  const [penKey, setPenKey] = useState("pen");
-  const [shapeMode, setShapeMode] = useState("free");
-  const [color, setColor] = useState("#1a1a2e");
-  const [sizeIdx, setSizeIdx] = useState(1);
-  const [eraserIdx, setEraserIdx] = useState(1);
-  const [isEraser, setIsEraser] = useState(false);
-  const [history, setHistory] = useState([]);
-  const [saving, setSaving] = useState(false);
+  const [placements, setPlacements] = useState([]);
+  const [library, setLibrary] = useState([]);
+  const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(true);
-  const dateLabel = date ? fmtDate(date) : "";
+  const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState("");
+  const canvasRef = useRef();
+  const dragRef = useRef(null);
 
-  // Hide FAB while diary is open
   useEffect(() => {
     document.body.classList.add("diary-open");
     return () => document.body.classList.remove("diary-open");
@@ -1220,274 +1200,155 @@ function DiaryModal({ onClose, date, isShared = false }) {
 
   useEffect(() => {
     if (!user || !date) { setLoading(false); return; }
-    setLoading(true);
-    setHistory([]);
-    isDrawingRef.current = false;
-    const canvas = canvasRef.current;
-    if (canvas) canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
-    const [col, docKey] = isShared
-      ? ["couple", `diary_${date}`]
-      : ["pencil", `${user.uid}-${date}`];
-    getDoc(doc(db, col, docKey)).then(snap => {
-      if (snap.exists() && snap.data().imageUrl) {
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => {
-          const c = canvasRef.current;
-          if (!c) { setLoading(false); return; }
-          c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-          setHistory([c.toDataURL()]);
-          setLoading(false);
-        };
-        img.onerror = () => setLoading(false);
-        img.src = snap.data().imageUrl;
-      } else { setLoading(false); }
+    getDoc(doc(db, "users", user.uid)).then(snap => {
+      if (snap.exists() && snap.data().stickers) setLibrary(snap.data().stickers);
+    }).catch(() => {});
+    const [col, key] = isShared ? ["couple", `diary_${date}`] : ["pencil", `${user.uid}-${date}`];
+    getDoc(doc(db, col, key)).then(snap => {
+      if (snap.exists() && Array.isArray(snap.data().placements)) setPlacements(snap.data().placements);
+      setLoading(false);
     }).catch(() => setLoading(false));
-  }, [user, date]);
+  }, [user, date, isShared]);
 
-  const getPos = e => {
-    const canvas = canvasRef.current;
-    const ne = e.nativeEvent ?? e;
-    // offsetX/Y are always relative to the canvas element's padding box — no rect subtraction needed
-    return {
-      x: ne.offsetX * (canvas.width / canvas.offsetWidth),
-      y: ne.offsetY * (canvas.height / canvas.offsetHeight),
-      pressure: ne.pointerType === "pen" ? Math.max(0.1, ne.pressure) : 0.5,
+  const compress = (file) => new Promise(res => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const MAX = 200, sc = Math.min(MAX / img.width, MAX / img.height, 1);
+      const [w, h] = [Math.round(img.width * sc), Math.round(img.height * sc)];
+      const c = document.createElement("canvas"); c.width = w; c.height = h;
+      c.getContext("2d").drawImage(img, 0, 0, w, h);
+      res(c.toDataURL("image/webp", 0.85));
     };
+    img.src = url;
+  });
+
+  const addToLibrary = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return; e.target.value = "";
+    const imageUrl = await compress(file);
+    const stk = { id: `s${Date.now()}`, imageUrl };
+    const newLib = [...library, stk];
+    setLibrary(newLib);
+    await setDoc(doc(db, "users", user.uid), { stickers: newLib }, { merge: true }).catch(console.error);
+    placeSticker(imageUrl);
   };
 
-  // Convert screen pixels → canvas pixels so stroke size feels consistent at any canvas resolution
-  const toCanvasPx = px => {
-    const c = canvasRef.current;
-    return px * (c ? c.width / c.offsetWidth : 1);
+  const placeSticker = (imageUrl) => {
+    const cw = canvasRef.current?.offsetWidth || 300;
+    const id = `p${Date.now()}${Math.random().toString(36).slice(2)}`;
+    setPlacements(prev => [...prev, { id, imageUrl, x: 0.5, y: 0.4, w: Math.round(cw * 0.36), opacity: 1.0 }]);
+    setSelectedId(id);
   };
 
-  const applyStyle = (ctx, pressure) => {
-    if (isEraser) {
-      ctx.globalCompositeOperation = "destination-out";
-      ctx.globalAlpha = 1;
-      ctx.lineWidth = toCanvasPx(DIARY_ERASER_SIZES[eraserIdx]);
-      ctx.lineCap = "round";
-      ctx.strokeStyle = "rgba(0,0,0,1)";
-    } else {
-      const pen = DIARY_PENS.find(p => p.key === penKey) || DIARY_PENS[0];
-      ctx.globalCompositeOperation = "source-over";
-      ctx.globalAlpha = pen.alpha;
-      ctx.lineWidth = Math.max(toCanvasPx(1), pressure * toCanvasPx(DIARY_SIZES[sizeIdx]) * pen.widthMult);
-      ctx.lineCap = pen.cap;
-      ctx.lineJoin = "round";
-      ctx.strokeStyle = color;
-    }
+  const onStickerDown = (e, p) => {
+    e.stopPropagation();
+    setSelectedId(p.id);
+    const rect = canvasRef.current.getBoundingClientRect();
+    dragRef.current = { id: p.id, cx: e.clientX, cy: e.clientY, ox: p.x, oy: p.y, cw: rect.width, ch: rect.height };
+    e.currentTarget.setPointerCapture(e.pointerId);
   };
 
-  const drawShape = (ctx, sx, sy, ex, ey) => {
-    ctx.beginPath();
-    if (shapeMode === "line") {
-      ctx.moveTo(sx, sy); ctx.lineTo(ex, ey);
-    } else if (shapeMode === "rect") {
-      ctx.rect(sx, sy, ex - sx, ey - sy);
-    } else if (shapeMode === "circle") {
-      const rx = Math.abs(ex - sx) / 2, ry = Math.abs(ey - sy) / 2;
-      ctx.ellipse(sx + (ex - sx) / 2, sy + (ey - sy) / 2, rx, ry, 0, 0, Math.PI * 2);
-    }
-    ctx.stroke();
+  const onStickerMove = (e) => {
+    const d = dragRef.current; if (!d) return;
+    setPlacements(prev => prev.map(p => p.id === d.id ? {
+      ...p,
+      x: Math.max(0, Math.min(1, d.ox + (e.clientX - d.cx) / d.cw)),
+      y: Math.max(0, Math.min(1, d.oy + (e.clientY - d.cy) / d.ch)),
+    } : p));
   };
 
-  const onPointerDown = e => {
-    e.preventDefault();
-    const canvas = canvasRef.current;
-    canvas.setPointerCapture(e.pointerId);
-    const ctx = canvas.getContext("2d");
-    const pos = getPos(e);
-    applyStyle(ctx, pos.pressure);
-    if (shapeMode !== "free") {
-      snapshotRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      startPosRef.current = pos;
-    } else {
-      // Stamp a dot at the exact press position so the brush tip anchors to the cursor
-      ctx.beginPath();
-      ctx.arc(pos.x, pos.y, ctx.lineWidth / 2, 0, Math.PI * 2);
-      ctx.fillStyle = ctx.strokeStyle;
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(pos.x, pos.y);
-    }
-    isDrawingRef.current = true;
-  };
+  const onStickerUp = () => { dragRef.current = null; };
 
-  const onPointerMove = e => {
-    if (!isDrawingRef.current) return;
-    e.preventDefault();
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    const pos = getPos(e);
-    applyStyle(ctx, pos.pressure);
-    if (shapeMode !== "free" && startPosRef.current) {
-      ctx.putImageData(snapshotRef.current, 0, 0);
-      applyStyle(ctx, pos.pressure);
-      drawShape(ctx, startPosRef.current.x, startPosRef.current.y, pos.x, pos.y);
-    } else {
-      ctx.lineTo(pos.x, pos.y); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(pos.x, pos.y);
-    }
-  };
+  const upd = (patch) => setPlacements(prev => prev.map(p => p.id === selectedId ? { ...p, ...patch } : p));
 
-  const onPointerUp = e => {
-    if (!isDrawingRef.current) return;
-    isDrawingRef.current = false;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    if (shapeMode !== "free" && startPosRef.current) {
-      const pos = getPos(e);
-      applyStyle(ctx, 0.5);
-      ctx.putImageData(snapshotRef.current, 0, 0);
-      applyStyle(ctx, 0.5);
-      drawShape(ctx, startPosRef.current.x, startPosRef.current.y, pos.x, pos.y);
-      startPosRef.current = null;
-    }
-    ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = "source-over";
-    setHistory(h => [...h, canvas.toDataURL()]);
-  };
-
-  const undo = () => {
-    const newHist = history.slice(0, -1);
-    setHistory(newHist);
-    const ctx = canvasRef.current.getContext("2d");
-    ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-    if (newHist.length > 0) {
-      const img = new Image();
-      img.onload = () => ctx.drawImage(img, 0, 0);
-      img.src = newHist[newHist.length - 1];
-    }
-  };
-
-  const clearCanvas = () => {
-    canvasRef.current.getContext("2d").clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-    setHistory([]);
-  };
-
-  const [saveError, setSaveError] = useState("");
-
-  const saveDiary = async () => {
-    if (!user || !date) return;
-    setSaving(true); setSaveError("");
+  const save = async () => {
+    setSaving(true); setSaveErr("");
     try {
-      // Export as PNG data URL and store directly in Firestore — no Storage upload needed
-      const imageUrl = canvasRef.current.toDataURL("image/png");
-      if (isShared) {
-        await setDoc(doc(db, "couple", `diary_${date}`), {
-          date, imageUrl, type: "diary", updatedAt: serverTimestamp(),
-        }, { merge: true });
-      } else {
-        await setDoc(doc(db, "pencil", `${user.uid}-${date}`), {
-          ownerEmail: user.email, date, imageUrl,
-          updatedAt: serverTimestamp(),
-        }, { merge: true });
-      }
+      const [col, key] = isShared ? ["couple", `diary_${date}`] : ["pencil", `${user.uid}-${date}`];
+      await setDoc(doc(db, col, key), {
+        date, placements,
+        ...(isShared ? {} : { ownerEmail: user.email }),
+        shared: isShared,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
       onClose();
-    } catch (err) {
-      console.error("diary save:", err);
-      setSaveError("保存失败，请重试");
-    } finally { setSaving(false); }
+    } catch (err) { console.error(err); setSaveErr("保存失败"); }
+    finally { setSaving(false); }
   };
 
-  const cursorStyle = isEraser ? "cell" : (shapeMode !== "free" ? "crosshair" : "crosshair");
+  const sel = placements.find(p => p.id === selectedId);
 
   return (
     <div className="diary-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="diary-panel">
-        {/* Header */}
+      <div className="sticker-panel">
         <div className="diary-hdr">
-          <span className="diary-title">✏️ {dateLabel}</span>
+          <span className="diary-title">🌸 {date ? fmtDate(date) : ""}</span>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            {saveError && <span style={{fontSize:12,color:"var(--together)",fontWeight:700}}>{saveError}</span>}
-            <button className="pbtn" onClick={undo} disabled={history.length===0}>↩ 撤销</button>
-            <button className="pbtn" onClick={clearCanvas}>🗑 清空</button>
-            <button className="pbtn primary" onClick={saveDiary} disabled={saving}>
-              {saving ? <><span className="profile-uploading" style={{width:14,height:14,borderWidth:2}} /> 保存中</> : "✓ 保存"}
+            {saveErr && <span style={{fontSize:12,color:"var(--together)",fontWeight:700}}>{saveErr}</span>}
+            <button className="pbtn" onClick={onClose}>取消</button>
+            <button className="pbtn primary" onClick={save} disabled={saving}>
+              {saving ? "保存中..." : "✓ 保存"}
             </button>
-            <button className="modal-close" onClick={onClose}><X size={16} /></button>
           </div>
         </div>
 
-        {/* Toolbar */}
-        <div className="diary-toolbar">
-          {/* Pen types */}
-          <div className="diary-tool-group">
-            <div className="diary-tool-group-label">画笔</div>
-            <div className="diary-tool-row">
-              {DIARY_PENS.map(p => (
-                <button key={p.key}
-                  className={`diary-chip${!isEraser && penKey===p.key?" active":""}`}
-                  onClick={() => { setPenKey(p.key); setIsEraser(false); setShapeMode("free"); }}>
-                  {p.label}
-                </button>
-              ))}
+        <div className="sticker-canvas" ref={canvasRef} onPointerDown={() => setSelectedId(null)}>
+          {loading && <div className="diary-loading">加载中...</div>}
+          {placements.map(p => (
+            <div key={p.id}
+              className={`sticker-placed${p.id === selectedId ? " active" : ""}`}
+              style={{ left:`${p.x*100}%`, top:`${p.y*100}%`, width:`${p.w}px`, height:`${p.w}px`, opacity:p.opacity }}
+              onPointerDown={e => onStickerDown(e, p)}
+              onPointerMove={onStickerMove}
+              onPointerUp={onStickerUp}
+              onPointerCancel={onStickerUp}
+            >
+              <img src={p.imageUrl} alt="" draggable={false} style={{width:"100%",height:"100%",objectFit:"contain",pointerEvents:"none",userSelect:"none"}} />
             </div>
-          </div>
-
-          {/* Shape mode */}
-          <div className="diary-tool-group">
-            <div className="diary-tool-group-label">形状</div>
-            <div className="diary-tool-row">
-              {DIARY_SHAPES.map(s => (
-                <button key={s}
-                  className={`diary-chip${!isEraser && shapeMode===s?" active":""}`}
-                  onClick={() => { setShapeMode(s); setIsEraser(false); }}>
-                  {DIARY_SHAPE_LABELS[s]}
-                </button>
-              ))}
+          ))}
+          {!loading && placements.length === 0 && (
+            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",color:"var(--muted)",fontSize:13,fontWeight:600,pointerEvents:"none"}}>
+              从下方选择贴纸 · 拖动来移动
             </div>
-          </div>
-
-          {/* Size */}
-          <div className="diary-tool-group">
-            <div className="diary-tool-group-label">粗细</div>
-            <div className="diary-tool-row" style={{alignItems:"center",gap:8}}>
-              {DIARY_SIZES.map((sz, i) => (
-                <button key={i}
-                  className={`diary-size-btn${!isEraser && sizeIdx===i?" active":""}`}
-                  onClick={() => { setSizeIdx(i); setIsEraser(false); }}
-                  style={{width: sz*2.8+10, height: sz*2.8+10}} />
-              ))}
-            </div>
-          </div>
-
-          {/* Eraser */}
-          <div className="diary-tool-group">
-            <div className="diary-tool-group-label">橡皮</div>
-            <div className="diary-tool-row" style={{alignItems:"center",gap:8}}>
-              {DIARY_ERASER_SIZES.map((sz, i) => (
-                <button key={i}
-                  className={`diary-size-btn${isEraser && eraserIdx===i?" active":""}`}
-                  onClick={() => { setEraserIdx(i); setIsEraser(true); }}
-                  style={{width: [16,24,36][i], height: [16,24,36][i]}} />
-              ))}
-            </div>
-          </div>
-
-          {/* Colors */}
-          <div className="diary-tool-group diary-colors-group">
-            <div className="diary-tool-group-label">颜色</div>
-            <div className="diary-color-grid">
-              {DIARY_COLORS.map(c => (
-                <button key={c}
-                  className={`diary-color-btn${!isEraser && color===c?" active":""}`}
-                  style={{background:c, outline: c==="#ffffff"?"1px solid var(--line)":"none"}}
-                  onClick={() => { setColor(c); setIsEraser(false); }} />
-              ))}
-            </div>
-          </div>
+          )}
         </div>
 
-        {/* Canvas */}
-        <div className="diary-canvas-wrap">
-          {loading && <div className="diary-loading"><span>加载中…</span></div>}
-          <canvas ref={canvasRef} width={480} height={300} className="diary-canvas"
-            onPointerDown={onPointerDown} onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp} onPointerLeave={onPointerUp}
-            style={{touchAction:"none", cursor: cursorStyle, opacity: loading ? 0 : 1}} />
+        {sel && (
+          <div className="sticker-controls">
+            <div className="sticker-ctrl-row">
+              <span className="sticker-ctrl-lbl">透明度</span>
+              <input type="range" min={0.1} max={1} step={0.05} value={sel.opacity}
+                onChange={e => upd({ opacity: +e.target.value })} />
+              <span className="sticker-ctrl-val">{Math.round(sel.opacity*100)}%</span>
+            </div>
+            <div className="sticker-ctrl-row">
+              <span className="sticker-ctrl-lbl">大小</span>
+              <input type="range" min={24} max={280} step={4} value={sel.w}
+                onChange={e => upd({ w: +e.target.value })} />
+              <span className="sticker-ctrl-val">{sel.w}px</span>
+            </div>
+            <button className="sticker-del-btn" onClick={() => { setPlacements(p => p.filter(x => x.id !== selectedId)); setSelectedId(null); }}>
+              🗑 移除贴纸
+            </button>
+          </div>
+        )}
+
+        <div className="sticker-lib">
+          <div className="sticker-lib-row">
+            <label className="sticker-lib-add">
+              <input type="file" accept="image/*" style={{display:"none"}} onChange={addToLibrary} />
+              <span>+</span>
+            </label>
+            {library.map(s => (
+              <button key={s.id} className="sticker-lib-item" title="点击添加到画布"
+                onClick={() => placeSticker(s.imageUrl)}>
+                <img src={s.imageUrl} alt="" />
+              </button>
+            ))}
+          </div>
+          <p className="sticker-lib-hint">
+            {library.length === 0 ? "点 + 上传贴纸图片" : "点贴纸放到画布 · 拖动移位 · 滑块调整大小/透明度"}
+          </p>
         </div>
       </div>
     </div>
@@ -1743,8 +1604,8 @@ function AppContent() {
   const detailRef = useRef();
   const [anniversaryDate, setAnniversaryDate] = useState("2025-01-01");
   const [maintenance, setMaintenance] = useState(false);
-  const [diaryImages, setDiaryImages] = useState({});
-  const [sharedDiaryImages, setSharedDiaryImages] = useState({});
+  const [stickerData, setStickerData] = useState({});
+  const [sharedStickerData, setSharedStickerData] = useState({});
 
   const ME = user?.email === HIM_EMAIL ? "him" : "her";
   const PARTNER = ME === "him" ? "her" : "him";
@@ -1803,9 +1664,9 @@ function AppContent() {
       const map = {};
       snap.docs.forEach(d => {
         const data = d.data();
-        if (data.date && data.imageUrl && !data.shared) map[data.date] = data.imageUrl;
+        if (data.date && data.placements?.length > 0 && !data.shared) map[data.date] = data.placements;
       });
-      setDiaryImages(map);
+      setStickerData(map);
     }, err => console.error("pencil listener:", err));
     return () => unsub();
   }, [user]);
@@ -1817,11 +1678,9 @@ function AppContent() {
       const map = {};
       snap.docs.forEach(d => {
         const data = d.data();
-        if (d.id.startsWith("diary_") && data.date && data.imageUrl) {
-          map[data.date] = data.imageUrl;
-        }
+        if (d.id.startsWith("diary_") && data.date && data.placements?.length > 0) map[data.date] = data.placements;
       });
-      setSharedDiaryImages(map);
+      setSharedStickerData(map);
     }, err => console.error("shared diary listener:", err));
     return () => unsub();
   }, [user]);
@@ -1838,11 +1697,14 @@ function AppContent() {
     return unsub;
   }, []);
 
-  // Auto-scroll to event detail on mobile when a date is selected
+  // Auto-scroll to sidebar when date selected on mobile
   useEffect(() => {
-    if (!selDate || !detailRef.current || window.innerWidth >= 900) return;
-    const t = setTimeout(() => detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
-    return () => clearTimeout(t);
+    if (!selDate || !detailRef.current) return;
+    if (window.innerWidth > 900) return;
+    const id = requestAnimationFrame(() => {
+      detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => cancelAnimationFrame(id);
   }, [selDate]);
 
   // Bootstrap defaults on first login
@@ -1992,14 +1854,15 @@ function AppContent() {
           </div>
           <div className="header-right">
             <ViewToggle value={viewMode} onChange={setViewMode} />
-            <div className="nav-divider" />
-            <button className="icon-btn" onClick={() => setSearchOpen(true)} title="搜索"><Search size={17} /></button>
-            <button className="icon-btn" onClick={() => setSchoolOpen(true)} title="学校日历"><GraduationCap size={17} /></button>
-            <button className="icon-btn" onClick={() => setProfileOpen(true)} title="个人资料"><User size={17} /></button>
-            <div className="nav-divider" />
-            <button className="icon-btn" onClick={() => setTheme(t => t==="light"?"dark":"light")} title="切换主题">
-              {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
-            </button>
+            <div className="header-actions">
+              <button className="icon-btn" onClick={() => setSearchOpen(true)} title="搜索"><Search size={17} /></button>
+              <button className="icon-btn" onClick={() => setSchoolOpen(true)} title="学校日历"><GraduationCap size={17} /></button>
+              <button className="icon-btn" onClick={() => setProfileOpen(true)} title="个人资料"><User size={17} /></button>
+              <div className="nav-divider" />
+              <button className="icon-btn" onClick={() => setTheme(t => t==="light"?"dark":"light")} title="切换主题">
+                {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
+              </button>
+            </div>
           </div>
         </header>
 
@@ -2011,7 +1874,7 @@ function AppContent() {
             onSelectDay={setSelDate}
             onChangeMonth={d => setCurDate(new Date(curDate.getFullYear(), curDate.getMonth()+d, 1))}
             onJumpTo={d => setCurDate(d)}
-            viewMode={viewMode} diaryImages={viewMode === "mine" ? diaryImages : sharedDiaryImages} />
+            viewMode={viewMode} stickerData={viewMode === "mine" ? stickerData : sharedStickerData} />
           <div ref={detailRef}>
             <Sidebar selDate={selDate} events={allEvents} curDate={curDate}
               viewMode={viewMode}
