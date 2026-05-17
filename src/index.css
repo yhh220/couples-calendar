@@ -989,8 +989,8 @@ select.f-input { cursor: pointer; }
 .diary-overlay {
   position: fixed; inset: 0; z-index: 120;
   background: rgba(0,0,0,.55);
-  display: flex; align-items: center; justify-content: center;
-  padding: 20px;
+  display: flex; align-items: flex-end; justify-content: center;
+  padding: 0;
 }
 .diary-hdr {
   display: flex; align-items: center; justify-content: space-between;
@@ -1536,7 +1536,7 @@ html.theme-ready :is(
   background: var(--surface);
   border-radius: var(--radius) var(--radius) 0 0;
   width: 100%; max-width: 680px;
-  max-height: 88dvh;
+  height: 88dvh;
   display: flex; flex-direction: column;
   overflow: hidden;
   box-shadow: 0 -4px 32px rgba(0,0,0,.18);
@@ -1590,7 +1590,7 @@ html.theme-ready :is(
 .draw-color-swatch.active { border-color: var(--together); transform: scale(1.15); }
 
 @media (max-width: 600px) {
-  .drawing-panel { max-height: 91dvh; border-radius: 18px 18px 0 0; }
+  .drawing-panel { height: 91dvh; border-radius: 18px 18px 0 0; }
   .draw-tool-btn { min-width: 28px; height: 28px; font-size: 13px; }
   .draw-color-swatch { width: 20px; height: 20px; }
 }
