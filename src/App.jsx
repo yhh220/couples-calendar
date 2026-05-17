@@ -1,4 +1,5 @@
 import { Component, useState, useEffect, useRef, useMemo, createContext, useContext } from "react";
+import { flushSync } from "react-dom";
 import {
   Heart, Sun, Moon, Plus, ChevronLeft, ChevronRight, Check, X,
   LogOut, CalendarIcon, Flag, Star, Briefcase, FileText,
@@ -1772,6 +1773,17 @@ function AppContent() {
     storageSet("theme", theme);
   }, [theme]);
 
+  const toggleTheme = (e) => {
+    const newTheme = theme === "light" ? "dark" : "light";
+    const { left, top, width, height } = e.currentTarget.getBoundingClientRect();
+    document.documentElement.style.setProperty("--theme-x", `${Math.round(left + width / 2)}px`);
+    document.documentElement.style.setProperty("--theme-y", `${Math.round(top + height / 2)}px`);
+    if (!document.startViewTransition) { setTheme(newTheme); return; }
+    document.startViewTransition(() => flushSync(() => setTheme(newTheme)));
+  };
+
+  useEffect(() => { document.body.classList.add("theme-ready"); }, []);
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, u => {
       if (u && !ALLOWED_EMAILS.has(u.email)) {
@@ -2015,7 +2027,7 @@ function AppContent() {
               <button className="icon-btn" onClick={() => setSchoolOpen(true)} title="学校日历"><GraduationCap size={17} /></button>
               <button className="icon-btn" onClick={() => setProfileOpen(true)} title="个人资料"><User size={17} /></button>
               <div className="nav-divider" />
-              <button className="icon-btn" onClick={() => setTheme(t => t==="light"?"dark":"light")} title="切换主题">
+              <button className="icon-btn" onClick={toggleTheme} title="切换主题">
                 {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
               </button>
             </div>
