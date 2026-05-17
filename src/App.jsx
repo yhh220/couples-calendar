@@ -630,7 +630,7 @@ function CommentsSection({ eventId }) {
 // ─────────────────────────────────────────
 // SIDEBAR
 // ─────────────────────────────────────────
-function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, viewMode }) {
+function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, viewMode, drawingData }) {
   const { user, ME } = useMe();
   const [expandedId, setExpandedId] = useState(null);
   const [expandStats, setExpandStats] = useState(false);
@@ -737,6 +737,12 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
           )}
         </div>
         <div className="ev-list">
+          {selDate && drawingData?.[selDate] && (
+            <div className="sidebar-drawing-card" onClick={() => setDiaryDraw(selDate)} style={{ marginBottom: 12, borderRadius: 16, overflow: "hidden", border: "1px solid var(--line)", background: "var(--surface-strong)", cursor: "pointer", position: "relative" }}>
+              <img src={drawingData[selDate]} alt="画板" style={{ width: "100%", display: "block" }} />
+              <div style={{ position: "absolute", bottom: 6, right: 8, fontSize: 11, color: "var(--muted)", fontWeight: 700, background: "var(--surface)", padding: "2px 6px", borderRadius: 8, opacity: 0.8 }}>✏️ 画板</div>
+            </div>
+          )}
           {holiday && (
             <div className="holiday-notice"><Flag size={16} /><div className="holiday-notice-text">{holiday.name}</div></div>
           )}
@@ -2772,6 +2778,7 @@ function AppContent() {
           <div ref={detailRef}>
             <Sidebar selDate={selDate} events={allEvents} curDate={curDate}
               viewMode={viewMode}
+              drawingData={viewMode === "mine" ? drawingData : sharedDrawingData}
               onDelete={e => setDeleteTarget(e)}
               onEdit={e => openEdit(e)}
               onPhotoClick={(srcs, idx) => setLightbox({ srcs, idx })} />

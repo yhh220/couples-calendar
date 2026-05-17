@@ -1276,10 +1276,12 @@ select.f-input { cursor: pointer; }
     max-height: 92dvh;
     padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
   }
+  .search-overlay.overlay { align-items: flex-start; padding: 0; }
   .search-overlay .search-modal {
     width: 100%;
-    border-radius: 28px 28px 0 0;
-    max-height: 88dvh;
+    border-radius: 0 0 28px 28px;
+    max-height: 85dvh;
+    padding-top: max(16px, env(safe-area-inset-top, 0px));
   }
   .popup-overlay { padding: 16px; }
 
