@@ -552,7 +552,7 @@ function Calendar({ curDate, events, selDate, onSelectDay, onChangeMonth, onJump
                 <div key={s} className={cls} onClick={() => onSelectDay(s)}>
                   {stickerData[s]?.map((p, i) => (
                     <img key={i} src={p.imageUrl} className="day-sticker-thumb"
-                      style={{ left:`${p.x*100}%`, top:`${p.y*100}%`, opacity:p.opacity }} alt="" />
+                      style={{ left:`${p.x*100}%`, top:`${p.y*100}%`, opacity:p.opacity, transform:`translate(-50%,-50%) rotate(${p.rotation??0}deg)` }} alt="" />
                   ))}
                   <div className="day-num">{day}</div>
                   <div className="day-pips">
