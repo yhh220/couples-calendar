@@ -175,12 +175,15 @@ em { color: var(--together); font-style: normal; }
   color: var(--text);
   border-radius: 999px;
   width: 42px; height: 42px;
-  display: inline-grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   box-shadow: var(--shadow-sm);
   transition: transform .18s, box-shadow .18s, background .18s;
   cursor: pointer;
   flex-shrink: 0;
+  padding: 0;
+  line-height: 1;
 }
 .icon-btn:hover, .cal-nav-btn:hover, .modal-close:hover {
   transform: scale(1.08);
