@@ -454,7 +454,7 @@ function MonthPicker({ curDate, onSelect, onClose }) {
 // ─────────────────────────────────────────
 // CALENDAR
 // ─────────────────────────────────────────
-function Calendar({ curDate, events, selDate, onSelectDay, onChangeMonth, onJumpTo, viewMode, calView = "month", onCalViewChange, stickerData = {} }) {
+function Calendar({ curDate, events, selDate, onSelectDay, onChangeMonth, onJumpTo, viewMode, calView = "month", onCalViewChange, stickerData = {}, drawingData = {} }) {
   const { user, ME } = useMe();
   const y = curDate.getFullYear(), m = curDate.getMonth();
   const [showPicker, setShowPicker] = useState(false);
@@ -550,6 +550,9 @@ function Calendar({ curDate, events, selDate, onSelectDay, onChangeMonth, onJump
               if (holiday) cls += " has-holiday";
               return (
                 <div key={s} className={cls} onClick={() => onSelectDay(s)}>
+                  {drawingData[s] && (
+                    <img src={drawingData[s]} className="day-drawing-thumb" alt="" />
+                  )}
                   {stickerData[s]?.map((p, i) => (
                     <img key={i} src={p.imageUrl} className="day-sticker-thumb"
                       style={{ left:`${p.x*100}%`, top:`${p.y*100}%`, opacity:p.opacity, transform:`translate(-50%,-50%) rotate(${p.rotation??0}deg)` }} alt="" />
@@ -2341,6 +2344,8 @@ function AppContent() {
   const [maintenance, setMaintenance] = useState(false);
   const [stickerData, setStickerData] = useState({});
   const [sharedStickerData, setSharedStickerData] = useState({});
+  const [drawingData, setDrawingData] = useState({});
+  const [sharedDrawingData, setSharedDrawingData] = useState({});
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [installDismissed, setInstallDismissed] = useState(storageGet("installDismissed") === "1");
   const [notifPermission, setNotifPermission] = useState(() => (typeof Notification !== "undefined" ? Notification.permission : "denied"));
@@ -2444,12 +2449,15 @@ function AppContent() {
     if (!user) return;
     const q = query(collection(db, "pencil"), where("ownerEmail", "==", user.email));
     const unsub = onSnapshot(q, snap => {
-      const map = {};
+      const sMap = {}, dMap = {};
       snap.docs.forEach(d => {
         const data = d.data();
-        if (data.date && data.placements?.length > 0 && !data.shared) map[data.date] = data.placements;
+        if (!data.date) return;
+        if (data.placements?.length > 0 && !data.shared) sMap[data.date] = data.placements;
+        if (data.drawing) dMap[data.date] = data.drawing;
       });
-      setStickerData(map);
+      setStickerData(sMap);
+      setDrawingData(dMap);
     }, err => console.error("pencil listener:", err));
     return () => unsub();
   }, [user]);
@@ -2458,12 +2466,15 @@ function AppContent() {
   useEffect(() => {
     if (!user) return;
     const unsub = onSnapshot(collection(db, "couple"), snap => {
-      const map = {};
+      const sMap = {}, dMap = {};
       snap.docs.forEach(d => {
         const data = d.data();
-        if (d.id.startsWith("diary_") && data.date && data.placements?.length > 0) map[data.date] = data.placements;
+        if (!d.id.startsWith("diary_") || !data.date) return;
+        if (data.placements?.length > 0) sMap[data.date] = data.placements;
+        if (data.drawing) dMap[data.date] = data.drawing;
       });
-      setSharedStickerData(map);
+      setSharedStickerData(sMap);
+      setSharedDrawingData(dMap);
     }, err => console.error("shared diary listener:", err));
     return () => unsub();
   }, [user]);
@@ -2756,7 +2767,8 @@ function AppContent() {
             viewMode={viewMode}
             calView={calView}
             onCalViewChange={setCalView}
-            stickerData={viewMode === "mine" ? stickerData : sharedStickerData} />
+            stickerData={viewMode === "mine" ? stickerData : sharedStickerData}
+            drawingData={viewMode === "mine" ? drawingData : sharedDrawingData} />
           <div ref={detailRef}>
             <Sidebar selDate={selDate} events={allEvents} curDate={curDate}
               viewMode={viewMode}
