@@ -730,6 +730,8 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
         </div>
       </div>
 
+      <PhotoStrip events={evts} onPhotoClick={onPhotoClick} onEdit={onEdit} />
+
       <div className="ov-card">
         <div className="ov-header">
           <div className="ov-title">{MONTH_NAMES[m-1]}概览</div>
@@ -844,12 +846,23 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, v
 
   const handlePhoto = e => {
     const file = e.target.files[0]; if (!file) return;
+    e.target.value = "";
     setError("");
-    if (!ALLOWED_IMAGE_TYPES.has(file.type)) { setError("只支持 JPG、PNG、WEBP 或 GIF。"); e.target.value = ""; return; }
-    if (file.size > LIMITS.imageBytes) { setError("图片不能超过 4MB。"); e.target.value = ""; return; }
-    const reader = new FileReader();
-    reader.onload = ev => { setPhoto(ev.target.result); setPhotoPreview(ev.target.result); };
-    reader.readAsDataURL(file);
+    if (!ALLOWED_IMAGE_TYPES.has(file.type)) { setError("只支持 JPG、PNG、WEBP 或 GIF。"); return; }
+    if (file.size > LIMITS.imageBytes) { setError("图片不能超过 4MB。"); return; }
+    // Compress client-side: max 600×600 webp — keeps Firestore doc well under 1 MB
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const MAX = 600, sc = Math.min(MAX / img.width, MAX / img.height, 1);
+      const w = Math.round(img.width * sc), h = Math.round(img.height * sc);
+      const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+      cv.getContext("2d").drawImage(img, 0, 0, w, h);
+      const dataUrl = cv.toDataURL("image/webp", 0.82);
+      setPhoto(dataUrl); setPhotoPreview(dataUrl);
+    };
+    img.src = url;
   };
 
   const toggleWeekday = d => setRecWeekdays(ws => ws.includes(d) ? ws.filter(w => w !== d) : [...ws, d]);
@@ -865,23 +878,18 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, v
     setLoading(true); setError("");
     try {
       let photoUrl = initEdit?.photo || null;
-      if (photoCleared && photoUrl) {
-        try {
-          const oldPath = storagePathFromUrl(photoUrl);
-          if (oldPath) await deleteObject(ref(storage, oldPath));
-        } catch { /* ignore cleanup failure */ }
-        photoUrl = null;
-      }
-      if (photo) {
+      if (photoCleared) {
+        // Clean up old Firebase Storage file if applicable (legacy photos)
         if (photoUrl) {
-          try {
-            const oldPath = storagePathFromUrl(photoUrl);
-            if (oldPath) await deleteObject(ref(storage, oldPath));
-          } catch { /* ignore cleanup failure */ }
+          try { const p = storagePathFromUrl(photoUrl); if (p) await deleteObject(ref(storage, p)); } catch {}
         }
-        const storageRef = ref(storage, `photos/${Date.now()}_${user?.uid}`);
-        await uploadString(storageRef, photo, "data_url");
-        photoUrl = await getDownloadURL(storageRef);
+        photoUrl = null;
+      } else if (photo) {
+        // New photo is already a compressed data URL — store directly in Firestore
+        if (photoUrl) {
+          try { const p = storagePathFromUrl(photoUrl); if (p) await deleteObject(ref(storage, p)); } catch {}
+        }
+        photoUrl = photo;
       }
       const shared = type === "together" || type === "anniversary";
       const recurrence = recType === "none" ? null : {
@@ -1182,6 +1190,29 @@ function SearchOverlay({ events, onClose, onJumpTo }) {
 // ─────────────────────────────────────────
 // STICKER MODAL
 // ─────────────────────────────────────────
+// ─────────────────────────────────────────
+// PHOTO STRIP (between detail-card and ov-card)
+// ─────────────────────────────────────────
+function PhotoStrip({ events, onPhotoClick, onEdit }) {
+  const photos = events.map(e => ({ src: safeImageSrc(e.photo), event: e })).filter(p => p.src);
+  if (photos.length === 0) return null;
+  return (
+    <div className="photo-strip">
+      <div className="photo-strip-label"><ImageIcon size={13} /> 照片 ({photos.length})</div>
+      <div className="photo-strip-row">
+        {photos.map(({ src, event }) => (
+          <div key={event.id} className="photo-strip-item">
+            <img src={src} alt="" onClick={() => onPhotoClick(src)} draggable={false} />
+            <button className="photo-strip-edit" onClick={e => { e.stopPropagation(); onEdit(event); }} title="编辑">
+              <Edit2 size={11} />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function StickerModal({ onClose, date, isShared = false }) {
   const { user } = useMe();
   const [placements, setPlacements] = useState([]);
@@ -1347,6 +1378,12 @@ function StickerModal({ onClose, date, isShared = false }) {
     }
   };
 
+  const removeFromLibrary = async (sid) => {
+    const newLib = library.filter(s => s.id !== sid);
+    setLibrary(newLib);
+    await setDoc(doc(db, "users", user.uid), { stickers: newLib }, { merge: true }).catch(console.error);
+  };
+
   const upd = (patch) => setPlacements(prev => prev.map(p => p.id === selectedId ? { ...p, ...patch } : p));
 
   const save = async () => {
@@ -1448,10 +1485,10 @@ function StickerModal({ onClose, date, isShared = false }) {
               <span>+</span>
             </label>
             {library.map(s => (
-              <button key={s.id} className="sticker-lib-item" title="点击添加到画布"
-                onClick={() => placeSticker(s.imageUrl)}>
-                <img src={s.imageUrl} alt="" />
-              </button>
+              <div key={s.id} className="sticker-lib-item" title="点击添加到画布">
+                <img src={s.imageUrl} alt="" onClick={() => placeSticker(s.imageUrl)} draggable={false} />
+                <button className="sticker-lib-del" onClick={e => { e.stopPropagation(); removeFromLibrary(s.id); }} title="从贴纸库删除">✕</button>
+              </div>
             ))}
           </div>
           <p className="sticker-lib-hint">
