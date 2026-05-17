@@ -2010,7 +2010,7 @@ function DrawingModal({ onClose, date, isShared }) {
     setSaving(true);
     setSaveErr(null);
     try {
-      const dataUrl = commitRef.current.toDataURL("image/webp", 0.82);
+      const dataUrl = commitRef.current.toDataURL("image/png");
       const [col, key] = isShared ? ["couple", `diary_${date}`] : ["pencil", `${user.uid}-${date}`];
       await setDoc(doc(db, col, key), {
         date, drawing: dataUrl,
