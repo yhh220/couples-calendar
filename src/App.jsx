@@ -1,5 +1,4 @@
 import { Component, useState, useEffect, useRef, useMemo, createContext, useContext } from "react";
-import { flushSync } from "react-dom";
 import {
   Heart, Sun, Moon, Plus, ChevronLeft, ChevronRight, Check, X,
   LogOut, CalendarIcon, Flag, Star, Briefcase, FileText,
@@ -1775,11 +1774,14 @@ function AppContent() {
 
   const toggleTheme = (e) => {
     const newTheme = theme === "light" ? "dark" : "light";
-    const { left, top, width, height } = e.currentTarget.getBoundingClientRect();
-    document.documentElement.style.setProperty("--theme-x", `${Math.round(left + width / 2)}px`);
-    document.documentElement.style.setProperty("--theme-y", `${Math.round(top + height / 2)}px`);
     if (!document.startViewTransition) { setTheme(newTheme); return; }
-    document.startViewTransition(() => flushSync(() => setTheme(newTheme)));
+    // Apply data-theme directly — no flushSync / React re-render during capture
+    const t = document.startViewTransition(() => {
+      document.documentElement.setAttribute("data-theme", newTheme);
+      storageSet("theme", newTheme);
+    });
+    // Sync React state after animation so icon updates without blocking
+    t.finished.then(() => setTheme(newTheme));
   };
 
   useEffect(() => { document.body.classList.add("theme-ready"); }, []);

@@ -1369,17 +1369,11 @@ select.f-input { cursor: pointer; }
    Circular reveal from the toggle button.
    Supported: Chrome 111+, Safari 18+
 ───────────────────────────────────────── */
-@keyframes theme-reveal {
-  from { clip-path: circle(0% at var(--theme-x, 50%) var(--theme-y, 50%)); }
-  to   { clip-path: circle(170% at var(--theme-x, 50%) var(--theme-y, 50%)); }
-}
 ::view-transition-old(root) {
-  animation: none;
-  z-index: 1;
+  animation: 220ms ease-out both;
 }
 ::view-transition-new(root) {
-  animation: theme-reveal 0.45s cubic-bezier(0.34, 1.0, 0.64, 1) both;
-  z-index: 2;
+  animation: 220ms ease-in both;
 }
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-old(root),
