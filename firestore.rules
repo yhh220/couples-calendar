@@ -49,5 +49,15 @@ service cloud.firestore {
                      (resource.data.private != true || isOwner());
       allow write: if isAuthorized();
     }
+
+    // Drawing PNG data lives in dedicated collections so the
+    // metadata docs (pencil/{key}, couple/{key}) stay small.
+    match /pencil_drawings/{noteId} {
+      allow read, write: if isAuthorized();
+    }
+
+    match /couple_drawings/{noteId} {
+      allow read, write: if isAuthorized();
+    }
   }
 }

@@ -10,7 +10,7 @@ import { auth, provider, db, storage, messaging, onMessage, registerFcmToken } f
 import { signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from "firebase/auth";
 import {
   collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, where,
-  setDoc, getDoc, updateDoc, serverTimestamp, enableNetwork,
+  setDoc, getDoc, getDocs, updateDoc, serverTimestamp, enableNetwork,
 } from "firebase/firestore";
 import { ref, uploadString, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { getHolidayForDate, MY_HOLIDAYS } from "./holidays";
@@ -59,8 +59,16 @@ function storageSet(key, value) { try { localStorage.setItem(key, value); } catc
 function storageRemove(key) { try { localStorage.removeItem(key); } catch {} }
 function safeArray(v) { return Array.isArray(v) ? v : []; }
 
-function cleanText(value, max = 120) {
-  return String(value || "").split("").map(c => { const n = c.charCodeAt(0); return n < 32 || n === 127 ? " " : c; }).join("").replace(/\s+/g, " ").trim().slice(0, max);
+function cleanText(value, max = 120, { preserveNewlines = false } = {}) {
+  const sanitized = String(value || "").split("").map(c => {
+    const n = c.charCodeAt(0);
+    if (preserveNewlines && (n === 10 || n === 13)) return c;
+    return n < 32 || n === 127 ? " " : c;
+  }).join("");
+  const collapsed = preserveNewlines
+    ? sanitized.replace(/[ \t\f\v]+/g, " ").replace(/\n{3,}/g, "\n\n")
+    : sanitized.replace(/\s+/g, " ");
+  return collapsed.trim().slice(0, max);
 }
 
 function isDateString(value) {
@@ -157,7 +165,7 @@ function expandRecurring(event, year, month) {
     } else if (type === "yearly") {
       if (startDate) { const [,sm,sd] = startDate.split("-").map(Number); matches = sm === month && sd === d; }
     } else if (type === "custom") {
-      matches = weekdays?.length ? weekdays.includes(dow) : true;
+      matches = weekdays?.length ? weekdays.includes(dow) : false;
     }
     if (matches && ds !== event.date) results.push(ds);
   }
@@ -542,7 +550,7 @@ function Calendar({ curDate, events, selDate, onSelectDay, onChangeMonth, onJump
         </div>
       ) : (
         <>
-          <div className="weekdays">{["日","一","二","三","四","五","六"].map(d => <div key={d} className="weekday">{d}</div>)}</div>
+          <div className="weekdays">{WEEKDAY_NAMES_SHORT.map(d => <div key={d} className="weekday">{d}</div>)}</div>
           <div className="days-grid">
             {cells.map(({ day, off, s, evts, holiday }) => {
               let cls = "day-cell";
@@ -584,7 +592,7 @@ function Calendar({ curDate, events, selDate, onSelectDay, onChangeMonth, onJump
 // ─────────────────────────────────────────
 // COMMENTS SECTION
 // ─────────────────────────────────────────
-function CommentsSection({ eventId }) {
+function CommentsSection({ eventId, bothCanEdit = false }) {
   const { user, usersInfo } = useMe();
   const [comments, setComments] = useState([]);
   const [text, setText] = useState("");
@@ -651,7 +659,7 @@ function CommentsSection({ eventId }) {
               ) : (
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                   <span className="comment-text">{c.text}</span>
-                  {(isOwner || c.calendar === "shared") && (
+                  {(isOwner || bothCanEdit) && (
                     <div style={{ display: "flex", gap: 2, opacity: 0.8 }}>
                       <button style={{background:"none",border:"none",padding:6,cursor:"pointer",color:"var(--muted)",display:"flex"}} onClick={() => { setEditingId(c.id); setEditText(c.text); }}><Edit2 size={13} /></button>
                       <button style={{background:"none",border:"none",padding:6,cursor:"pointer",color:"#dd4f68",display:"flex"}} onClick={() => deleteComment(c.id)}><Trash2 size={13} /></button>
@@ -818,6 +826,7 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
     { key: "assign",   label: "课业",  icon: <FileText size={15} />,      color: "var(--assign)" },
     { key: "personal", label: "特别事件", icon: <Smile size={15} />,      color: "var(--personal)" },
     { key: "social",   label: "社交",    icon: <Users size={15} />,        color: "var(--social)" },
+    { key: "work",     label: "工作",    icon: <Briefcase size={15} />,    color: "var(--him)" },
     { key: "holiday",  label: "节假日",  icon: <Flag size={15} />,         color: "var(--holiday)" },
   ];
 
@@ -914,7 +923,10 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
                 )}
                 {isExpanded && !e.locked && !e.private && e.id && (
                   <div className="ev-expanded" onClick={ev => ev.stopPropagation()}>
-                    <CommentsSection eventId={e.id} />
+                    <CommentsSection
+                      eventId={e.id}
+                      bothCanEdit={e.calendar === "shared" || e.type === "together" || e.type === "anniversary"}
+                    />
                   </div>
                 )}
               </div>
@@ -931,7 +943,7 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
           <div style={{ display:"flex", gap:6, alignItems:"center" }}>
             <div className="ov-total-badge">
               {viewMode === "mine"
-                ? typeCount("exam") + typeCount("assign") + typeCount("personal") + typeCount("social") + holidayCount
+                ? typeCount("exam") + typeCount("assign") + typeCount("personal") + typeCount("social") + typeCount("work") + holidayCount
                 : monthEvts.length + holidayCount} 个活动
             </div>
             <button className="icon-btn" style={{width:28,height:28}} onClick={() => setExpandStats(v => !v)}>
@@ -939,7 +951,7 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
             </button>
           </div>
         </div>
-        <div className={`ov-grid${viewMode === "mine" ? " ov-grid-5" : " ov-grid-6"}`}>
+        <div className={`ov-grid ov-grid-6`}>
           {(viewMode === "mine" ? mineStatsRows : statsRows).map(s => {
             const cnt = s.key === "holiday" ? holidayCount
               : s.key === "school" ? monthEvts.filter(e => e.source === "school").length
@@ -967,8 +979,9 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
               <div className="ov-stat-row"><span>课业</span><span>{typeCount("assign")}</span></div>
               <div className="ov-stat-row"><span>特别事件</span><span>{typeCount("personal")}</span></div>
               <div className="ov-stat-row"><span>社交</span><span>{typeCount("social")}</span></div>
+              <div className="ov-stat-row"><span>工作</span><span>{typeCount("work")}</span></div>
               <div className="ov-stat-row"><span>节假日</span><span>{holidayCount}</span></div>
-              <div className="ov-stat-row total-row"><span>合计</span><span>{typeCount("exam") + typeCount("assign") + typeCount("personal") + typeCount("social") + holidayCount}</span></div>
+              <div className="ov-stat-row total-row"><span>合计</span><span>{typeCount("exam") + typeCount("assign") + typeCount("personal") + typeCount("social") + typeCount("work") + holidayCount}</span></div>
             </> : <>
               <div className="ov-stat-row"><span>约会</span><span>{typeCount("together")}</span></div>
               <div className="ov-stat-row"><span>纪念日</span><span>{typeCount("anniversary")}</span></div>
@@ -1285,7 +1298,12 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, v
           <div className="f-row">
             <div className="f-group" style={{marginBottom:0}}>
               <label className="f-label">开始日期</label>
-              <input className="f-input" type="date" value={date} onChange={e => setDate(e.target.value)} />
+              <input className="f-input" type="date" value={date} onChange={e => {
+                const v = e.target.value;
+                setDate(v);
+                if (endDate && v && v >= endDate) setEndDate("");
+                if (recEnd && v && v > recEnd) setRecEnd("");
+              }} />
             </div>
             <div className="f-group" style={{marginBottom:0}}>
               <label className="f-label">结束日期（选填）</label>
@@ -1338,7 +1356,7 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, v
             <div className="f-group" style={{marginBottom:0}}>
               <label className="f-label">重复的星期</label>
               <div className="weekday-pills">
-                {["日","一","二","三","四","五","六"].map((d, i) => (
+                {WEEKDAY_NAMES_SHORT.map((d, i) => (
                   <button key={i} className={`weekday-pill${recWeekdays.includes(i) ? " active" : ""}`} onClick={() => toggleWeekday(i)}>{d}</button>
                 ))}
               </div>
@@ -1847,7 +1865,7 @@ function DiaryTextModal({ onClose, date, isShared }) {
     try {
       const [col, key] = isShared ? ["couple", `diary_${date}`] : ["pencil", `${user.uid}-${date}`];
       await setDoc(doc(db, col, key), {
-        date, text: cleanText(text, 2000),
+        date, text: cleanText(text, 2000, { preserveNewlines: true }),
         ...(isShared ? {} : { ownerEmail: user.email }),
         updatedAt: serverTimestamp(),
       }, { merge: true });
@@ -1900,6 +1918,7 @@ function DrawingModal({ onClose, date, isShared }) {
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [savingSticker, setSavingSticker] = useState(false);
 
   const commitRef = useRef(null);
@@ -2348,7 +2367,7 @@ function DrawingModal({ onClose, date, isShared }) {
       <div className="drawing-panel">
         <div className="diary-hdr">
           <div style={{minWidth:0, flex: 1}}>
-            <div className="diary-title" style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}><PenLine size={18} flexShrink={0} /> {fmtDate(date)}</div>
+            <div className="diary-title" style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}><PenLine size={18} style={{ flexShrink: 0 }} /> {fmtDate(date)}</div>
             <div className="diary-sub" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{isShared ? "共享画板 · 两人都能看到" : "私人画板 · 只有自己看到"}</div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
@@ -2707,6 +2726,7 @@ function AppContent() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [editScopeTarget, setEditScopeTarget] = useState(null);
+  const [pendingException, setPendingException] = useState(null);
   const [calView, setCalView] = useState("month");
   const detailRef = useRef();
   const [anniversaryDate, setAnniversaryDate] = useState("2025-01-01");
@@ -2762,12 +2782,17 @@ function AppContent() {
   // Foreground FCM message → show toast
   useEffect(() => {
     if (!messaging) return;
-    return onMessage(messaging, payload => {
+    let tid = null;
+    const unsub = onMessage(messaging, payload => {
       const { title, body } = payload.notification ?? {};
       setToast({ title: title ?? "", body: body ?? "" });
-      const tid = setTimeout(() => setToast(null), 4000);
-      return () => clearTimeout(tid);
+      if (tid) clearTimeout(tid);
+      tid = setTimeout(() => setToast(null), 4000);
     });
+    return () => {
+      if (tid) clearTimeout(tid);
+      unsub?.();
+    };
   }, []);
 
   // Lightbox keyboard navigation
@@ -2964,6 +2989,17 @@ function AppContent() {
       if (!safeData) return;
       await addDoc(collection(db, "events"), { ...safeData, createdAt: serverTimestamp() });
     }
+    // For "edit this instance only" of a recurring event:
+    // write the exception to the original AFTER the replacement event is saved,
+    // so cancelling the modal doesn't leave a hole.
+    if (pendingException) {
+      try {
+        await updateDoc(doc(db, "events", pendingException.recurringId), {
+          "recurrence.exceptions": [...pendingException.existingExceptions, pendingException.date],
+        });
+      } catch (err) { console.error(err); }
+      setPendingException(null);
+    }
   };
 
   const handleDelete = async (event, option = "single") => {
@@ -2993,6 +3029,11 @@ function AppContent() {
         if (path) await deleteObject(ref(storage, path));
       } catch { /* ignore storage cleanup failures */ }
     }
+    // Cascade-delete comment subcollection so old replies don't orphan.
+    try {
+      const commentsSnap = await getDocs(collection(db, "events", event.id, "comments"));
+      await Promise.all(commentsSnap.docs.map(c => deleteDoc(c.ref)));
+    } catch (e) { console.error("comment cascade delete failed:", e); }
     try { await deleteDoc(doc(db, "events", event.id)); } catch (e) { console.error(e); }
   };
 
@@ -3021,12 +3062,15 @@ function AppContent() {
     }
   };
 
-  const handleEditThisOnly = async () => {
+  const handleEditThisOnly = () => {
     if (!editScopeTarget) return;
-    try {
-      const exceptions = [...(editScopeTarget.recurrence?.exceptions || []), editScopeTarget.date];
-      await updateDoc(doc(db, "events", editScopeTarget.id), { "recurrence.exceptions": exceptions });
-    } catch (err) { console.error(err); }
+    // Defer the exception write until the replacement event is saved
+    // (see handleSubmitEvent). Cancelling the modal keeps the series intact.
+    setPendingException({
+      recurringId: editScopeTarget.id,
+      date: editScopeTarget.date,
+      existingExceptions: editScopeTarget.recurrence?.exceptions || [],
+    });
     setEditEvent({ ...editScopeTarget, id: null, recurrence: null, isRecurrenceInstance: undefined });
     setModalOpen(true);
     setEditScopeTarget(null);
@@ -3066,7 +3110,7 @@ function AppContent() {
   const allEvents = [...firestoreEvents, ...allSchoolEvents, ...(anniversaryEvent ? [anniversaryEvent] : [])];
 
   if (authLoading) return <LoadingScreen />;
-  if (maintenance && !user) return <MaintenanceScreen />;
+  if (maintenance) return <MaintenanceScreen />;
   if (noPermission) return (
     <><div className="blob blob-1"/><div className="blob blob-2"/><div className="blob blob-3"/><NoPermissionScreen onLogout={handleLogout} /></>
   );
@@ -3174,7 +3218,7 @@ function AppContent() {
 
       <AddModal
         open={modalOpen}
-        onClose={() => { setModalOpen(false); setEditEvent(null); }}
+        onClose={() => { setModalOpen(false); setEditEvent(null); setPendingException(null); }}
         defaultDate={selDate}
         onSubmit={handleSubmitEvent}
         editEvent={editEvent}
