@@ -1060,7 +1060,6 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, v
   const [note, setNote] = useState("");
   const [photos, setPhotos] = useState([]); // array of compressed data URLs
   const [cropSrc, setCropSrc] = useState(null); // raw data URL awaiting crop
-  const [isPrivate, setIsPrivate] = useState(false);
   const [recType, setRecType] = useState("none");
   const [recEnd, setRecEnd] = useState("");
   const [recWeekdays, setRecWeekdays] = useState([0,1,2,3,4,5,6]);
@@ -1081,7 +1080,6 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, v
       setRepeat(Boolean(initEdit.repeat));
       setNote(initEdit.note || "");
       setPhotos(initEdit.photos?.length ? initEdit.photos.filter(s => safeImageSrc(s)) : (safeImageSrc(initEdit.photo) ? [initEdit.photo] : []));
-      setIsPrivate(Boolean(initEdit.private));
       const rec = initEdit.recurrence;
       setRecType(rec?.type || "none");
       setRecEnd(rec?.endDate || "");
@@ -1095,7 +1093,7 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, v
   const resetForm = () => {
     setTitle(""); setType(viewMode === "mine" ? "personal" : "together"); setTime(""); setNote(""); setEndDate("");
     setAllDay(false); setRepeat(false); setPhotos([]); setCropSrc(null);
-    setError(""); setIsPrivate(false);
+    setError("");
     setRecType("none"); setRecEnd(""); setRecWeekdays([0,1,2,3,4,5,6]);
   };
 
@@ -1152,7 +1150,7 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, v
         repeat: repeat && type === "anniversary",
         photos: photos.filter(s => safeImageSrc(s)),
         photo: null, // legacy field cleared
-        private: !shared && isPrivate,
+        private: false,
         recurrence,
       };
       if (isEdit) {
@@ -1201,6 +1199,23 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, v
           <button className="modal-close" onClick={() => { resetForm(); onClose(); }}><X size={16} /></button>
         </div>
 
+        {/* ── 提示横幅 ── */}
+        <div style={{
+          padding: "10px 14px",
+          background: viewMode === "mine" ? "rgba(84,136,232,0.1)" : "rgba(232,128,154,0.1)",
+          color: viewMode === "mine" ? "var(--him)" : "var(--her)",
+          borderRadius: 8,
+          fontSize: 13,
+          fontWeight: 600,
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          marginBottom: 16
+        }}>
+          <Smile size={16} />
+          {viewMode === "mine" ? "当前为个人模式：添加的活动只有你自己能看见" : "当前为共享模式：添加的活动双方都能看见"}
+        </div>
+
         {/* ── 活动名称 ── */}
         <div className="f-group">
           <label className="f-label">活动名称</label>
@@ -1219,7 +1234,6 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, v
                 onClick={() => {
                   setType(t.key);
                   if (t.key !== "anniversary") setRepeat(false);
-                  if (t.key === "together" || t.key === "anniversary") setIsPrivate(false);
                 }}>
                 <span className="type-card-icon">{t.icon}</span>
                 <span className="type-card-label">{t.label}</span>
@@ -1298,12 +1312,6 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, v
         {/* ── 其他选项 ── */}
         <div className="f-section">
           <div className="f-section-label">其他</div>
-          {!isShared && (
-            <div className="f-group"><div className="toggle-row">
-              <button className={`toggle${isPrivate?" on":""}`} onClick={() => setIsPrivate(!isPrivate)} />
-              <span className="toggle-lbl">🔒 只有自己能看到</span>
-            </div></div>
-          )}
           <div className="f-group">
             <label className="f-label">备注（选填）</label>
             <input className="f-input" type="text" placeholder="地点、提醒..." maxLength={LIMITS.note} value={note} onChange={e => setNote(e.target.value)} />
