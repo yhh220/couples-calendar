@@ -553,7 +553,9 @@ function Calendar({ curDate, events, selDate, onSelectDay, onChangeMonth, onJump
               return (
                 <div key={s} className={cls} onClick={() => onSelectDay(s)}>
                   {drawingData[s] && (
-                    <img src={drawingData[s]} className="day-drawing-thumb" alt="" />
+                    <div className="day-drawing-indicator" title="有画板">
+                      <Pencil size={11} />
+                    </div>
                   )}
                   {stickerData[s]?.map((p, i) => (
                     <img key={i} src={p.imageUrl} className="day-sticker-thumb"
@@ -714,6 +716,35 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
   const [diaryText, setDiaryText] = useState(null);
   const [diaryDraw, setDiaryDraw] = useState(null);
   const [statModalData, setStatModalData] = useState(null);
+  const [sidebarDrawing, setSidebarDrawing] = useState(null);
+  const [loadingDrawing, setLoadingDrawing] = useState(false);
+
+  useEffect(() => {
+    if (!selDate || !drawingData?.[selDate] || !user) {
+      setSidebarDrawing(null);
+      return;
+    }
+    setLoadingDrawing(true);
+    const isShared = viewMode === "shared";
+    const drawCol = isShared ? "couple_drawings" : "pencil_drawings";
+    const metaCol = isShared ? "couple" : "pencil";
+    const key = isShared ? `diary_${selDate}` : `${user.uid}-${selDate}`;
+
+    getDoc(doc(db, drawCol, key)).then(snap => {
+      if (snap.exists() && snap.data().drawing) {
+        setSidebarDrawing(snap.data().drawing);
+      } else {
+        // Fallback for older drawings stored in the metadata document
+        getDoc(doc(db, metaCol, key)).then(snap2 => {
+          if (snap2.exists() && snap2.data().drawing) {
+            setSidebarDrawing(snap2.data().drawing);
+          } else {
+            setSidebarDrawing(null);
+          }
+        }).catch(() => setSidebarDrawing(null));
+      }
+    }).catch(() => setSidebarDrawing(null)).finally(() => setLoadingDrawing(false));
+  }, [selDate, drawingData, viewMode, user]);
 
   const filterForView = evList => evList.filter(e => {
     if (viewMode === "mine") {
@@ -817,7 +848,13 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
         <div className="ev-list">
           {selDate && drawingData?.[selDate] && (
             <div className="sidebar-drawing-card" onClick={() => setDiaryDraw(selDate)} style={{ marginBottom: 12, borderRadius: 16, overflow: "hidden", border: "1px solid var(--line)", background: "var(--surface-strong)", cursor: "pointer", position: "relative" }}>
-              <img src={drawingData[selDate]} alt="画板" style={{ width: "100%", display: "block" }} />
+              {loadingDrawing ? (
+                <div style={{ height: 120, display: "grid", placeItems: "center", fontSize: 12, color: "var(--muted)" }}>加载中...</div>
+              ) : sidebarDrawing ? (
+                <img src={sidebarDrawing} alt="画板" style={{ width: "100%", display: "block" }} />
+              ) : (
+                <div style={{ height: 120, display: "grid", placeItems: "center", fontSize: 12, color: "var(--muted)" }}>加载画板中...</div>
+              )}
               <div style={{ position: "absolute", bottom: 6, right: 8, fontSize: 11, color: "var(--muted)", fontWeight: 700, background: "var(--surface)", padding: "4px 8px", borderRadius: 8, opacity: 0.8, display: "flex", alignItems: "center", gap: 4 }}><PenLine size={12} /> 画板</div>
             </div>
           )}
@@ -1921,27 +1958,58 @@ function DrawingModal({ onClose, date, isShared }) {
     const commitCtx = setupCanvas(commitRef.current, cssW, cssH);
     setupCanvas(activeRef.current, cssW, cssH);
 
-    const [col, key] = isShared ? ["couple", `diary_${date}`] : ["pencil", `${user.uid}-${date}`];
-    getDoc(doc(db, col, key)).then(snap => {
-      if (snap.exists() && snap.data().drawing) {
-        const img = new Image();
-        img.onload = () => {
-          commitCtx.drawImage(img, 0, 0, cssW, cssH);
-          saveHistorySnapshot();
-          setLoading(false);
-        };
-        img.onerror = () => {
-          commitCtx.fillStyle = "#ffffff";
-          commitCtx.fillRect(0, 0, cssW, cssH);
-          saveHistorySnapshot();
-          setLoading(false);
-        };
-        img.src = snap.data().drawing;
-      } else {
+    const metaCol = isShared ? "couple" : "pencil";
+    const drawCol = isShared ? "couple_drawings" : "pencil_drawings";
+    const key = isShared ? `diary_${date}` : `${user.uid}-${date}`;
+
+    const drawImgSrc = (src) => {
+      const img = new Image();
+      img.onload = () => {
+        commitCtx.drawImage(img, 0, 0, cssW, cssH);
+        saveHistorySnapshot();
+        setLoading(false);
+      };
+      img.onerror = () => {
         commitCtx.fillStyle = "#ffffff";
         commitCtx.fillRect(0, 0, cssW, cssH);
         saveHistorySnapshot();
         setLoading(false);
+      };
+      img.src = src;
+    };
+
+    getDoc(doc(db, drawCol, key)).then(snap => {
+      if (snap.exists() && snap.data().drawing) {
+        drawImgSrc(snap.data().drawing);
+      } else {
+        // Fallback for older drawings stored in the metadata document
+        getDoc(doc(db, metaCol, key)).then(snap2 => {
+          if (snap2.exists() && snap2.data().drawing) {
+            const oldDrawing = snap2.data().drawing;
+            drawImgSrc(oldDrawing);
+            
+            // Perform background migration on the fly
+            setDoc(doc(db, drawCol, key), {
+              drawing: oldDrawing,
+              updatedAt: serverTimestamp(),
+            }).then(() => {
+              setDoc(doc(db, metaCol, key), {
+                hasDrawing: true,
+                drawing: null // setting to null removes the huge string from meta doc
+              }, { merge: true }).catch(console.error);
+            }).catch(console.error);
+          } else {
+            commitCtx.fillStyle = "#ffffff";
+            commitCtx.fillRect(0, 0, cssW, cssH);
+            saveHistorySnapshot();
+            setLoading(false);
+          }
+        }).catch(() => {
+          commitCtx.fillStyle = "#ffffff";
+          commitCtx.fillRect(0, 0, cssW, cssH);
+          saveHistorySnapshot();
+          setLoading(false);
+        });
       }
     }).catch(() => {
       if (commitRef.current) {
@@ -2129,13 +2197,30 @@ function DrawingModal({ onClose, date, isShared }) {
       }
 
       const dataUrl = hasPixels ? canvas.toDataURL("image/png") : null;
-      const [col, key] = isShared ? ["couple", `diary_${date}`] : ["pencil", `${user.uid}-${date}`];
+      const metaCol = isShared ? "couple" : "pencil";
+      const drawCol = isShared ? "couple_drawings" : "pencil_drawings";
+      const key = isShared ? `diary_${date}` : `${user.uid}-${date}`;
       
-      await setDoc(doc(db, col, key), {
-        date, drawing: dataUrl,
+      if (dataUrl) {
+        // Save drawing separately
+        await setDoc(doc(db, drawCol, key), {
+          drawing: dataUrl,
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        // Remove drawing doc if empty
+        await deleteDoc(doc(db, drawCol, key));
+      }
+
+      // Save metadata with hasDrawing indicator
+      await setDoc(doc(db, metaCol, key), {
+        date, 
+        hasDrawing: !!dataUrl,
+        drawing: null, // clear old inline drawing if exists
         ...(isShared ? {} : { ownerEmail: user.email }),
         updatedAt: serverTimestamp(),
       }, { merge: true });
+      
       onClose();
     } catch (err) {
       console.error(err);
@@ -2148,12 +2233,22 @@ function DrawingModal({ onClose, date, isShared }) {
   const deleteBoard = async () => {
     setSaving(true);
     try {
-      const [col, key] = isShared ? ["couple", `diary_${date}`] : ["pencil", `${user.uid}-${date}`];
-      await setDoc(doc(db, col, key), {
-        date, drawing: null,
+      const metaCol = isShared ? "couple" : "pencil";
+      const drawCol = isShared ? "couple_drawings" : "pencil_drawings";
+      const key = isShared ? `diary_${date}` : `${user.uid}-${date}`;
+
+      // Delete from drawings collection
+      await deleteDoc(doc(db, drawCol, key));
+
+      // Reset in metadata collection
+      await setDoc(doc(db, metaCol, key), {
+        date, 
+        hasDrawing: false,
+        drawing: null, // clear old inline drawing if exists
         ...(isShared ? {} : { ownerEmail: user.email }),
         updatedAt: serverTimestamp(),
       }, { merge: true });
+
       onClose();
     } catch(err) {
       alert("删除失败: " + err.message);
@@ -2739,7 +2834,7 @@ function AppContent() {
         const data = d.data();
         if (!data.date) return;
         if (data.placements?.length > 0 && !data.shared) sMap[data.date] = data.placements;
-        if (data.drawing) dMap[data.date] = data.drawing;
+        if (data.drawing || data.hasDrawing) dMap[data.date] = true;
       });
       setStickerData(sMap);
       setDrawingData(dMap);
@@ -2756,7 +2851,7 @@ function AppContent() {
         const data = d.data();
         if (!d.id.startsWith("diary_") || !data.date) return;
         if (data.placements?.length > 0) sMap[data.date] = data.placements;
-        if (data.drawing) dMap[data.date] = data.drawing;
+        if (data.drawing || data.hasDrawing) dMap[data.date] = true;
       });
       setSharedStickerData(sMap);
       setSharedDrawingData(dMap);
@@ -2803,7 +2898,11 @@ function AppContent() {
         if (!snap.exists()) setDoc(doc(db, "school_events", item.id), item).catch(console.error);
       })
     );
-    DEFAULT_ANNUAL_EVENTS.forEach(item => setDoc(doc(db, "events", item.id), item, { merge: true }).catch(console.error));
+    DEFAULT_ANNUAL_EVENTS.forEach(item => {
+      getDoc(doc(db, "events", item.id)).then(snap => {
+        if (!snap.exists()) setDoc(doc(db, "events", item.id), item).catch(console.error);
+      });
+    });
     // Bootstrap user profile
     getDoc(doc(db, "users", user.uid)).then(snap => {
       if (!snap.exists()) {
@@ -2949,8 +3048,7 @@ function AppContent() {
   const now = new Date();
   const dayNames = ["日","一","二","三","四","五","六"];
   const todayStr = `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 星期${dayNames[now.getDay()]}`;
-  const schoolById = new Map([...DEFAULT_SCHOOL_EVENTS, ...schoolEvents].map(ev => [ev.id, ev]));
-  const allSchoolEvents = Array.from(schoolById.values());
+  const allSchoolEvents = [...schoolEvents];
   // Anniversary event is derived from Firestore anniversaryDate so it always reflects the correct date.
   // Filter out the old hardcoded Firestore entry (annual-anniversary-0101) to avoid duplicates.
   const anniversaryEvent = anniversaryDate ? {
