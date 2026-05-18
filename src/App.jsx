@@ -2013,8 +2013,24 @@ function DrawingModal({ onClose, date, isShared }) {
     setSaving(true);
     setSaveErr(null);
     try {
-      const dataUrl = commitRef.current.toDataURL("image/png");
+      const canvas = commitRef.current;
+      const ctx = canvas.getContext("2d");
+      const w = canvas.width;
+      const h = canvas.height;
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const data = imgData.data;
+      
+      let hasPixels = false;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i+3] > 0 && (data[i] < 250 || data[i+1] < 250 || data[i+2] < 250)) {
+          hasPixels = true;
+          break;
+        }
+      }
+
+      const dataUrl = hasPixels ? canvas.toDataURL("image/png") : null;
       const [col, key] = isShared ? ["couple", `diary_${date}`] : ["pencil", `${user.uid}-${date}`];
+      
       await setDoc(doc(db, col, key), {
         date, drawing: dataUrl,
         ...(isShared ? {} : { ownerEmail: user.email }),
