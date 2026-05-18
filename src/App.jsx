@@ -463,7 +463,7 @@ function Calendar({ curDate, events, selDate, onSelectDay, onChangeMonth, onJump
   const filterEvts = (allEvts) => allEvts.filter(e => {
     if (viewMode === "mine") {
       if (e.type === "holiday" || e.type === "anniversary" || e.source === "school") return true;
-      if (e.type === "together") return false;
+      if (e.type === "together" || e.calendar === "shared") return false;
       return e.owner === ME || e.ownerEmail === user?.email;
     }
     if (e.calendar === "mine") return false;
@@ -642,7 +642,7 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
   const filterForView = evList => evList.filter(e => {
     if (viewMode === "mine") {
       if (e.type === "holiday" || e.type === "anniversary" || e.source === "school") return true;
-      if (e.type === "together") return false;
+      if (e.type === "together" || e.calendar === "shared") return false;
       return e.owner === ME || e.ownerEmail === user?.email;
     }
     if (e.calendar === "mine") return false;
