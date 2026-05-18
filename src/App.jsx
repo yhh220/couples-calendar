@@ -204,6 +204,7 @@ function normalizeEventInput(data, user) {
     photos: Array.isArray(data.photos) ? data.photos.filter(s => safeImageSrc(s)).slice(0, 4) : (safeImageSrc(data.photo) ? [safeImageSrc(data.photo)] : []),
     photo: null, // kept null; display code reads from photos[]
     private: !shared && Boolean(data.private),
+    calendar: data.calendar === "mine" ? "mine" : "shared",
     recurrence: data.recurrence || null,
   };
 }
