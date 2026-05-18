@@ -2145,6 +2145,21 @@ function DrawingModal({ onClose, date, isShared }) {
     }
   };
 
+  const deleteBoard = async () => {
+    setSaving(true);
+    try {
+      const [col, key] = isShared ? ["couple", `diary_${date}`] : ["pencil", `${user.uid}-${date}`];
+      await setDoc(doc(db, col, key), {
+        date, drawing: null,
+        ...(isShared ? {} : { ownerEmail: user.email }),
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+      onClose();
+    } catch(err) {
+      alert("删除失败: " + err.message);
+    } finally { setSaving(false); }
+  };
+
   const saveAsSticker = async () => {
     const canvas = commitRef.current;
     if (!canvas) return;
@@ -2237,15 +2252,12 @@ function DrawingModal({ onClose, date, isShared }) {
     <div className="diary-overlay" onClick={e => e.target.classList.contains("diary-overlay") && onClose()}>
       <div className="drawing-panel">
         <div className="diary-hdr">
-          <div>
-            <div className="diary-title" style={{ display: "flex", alignItems: "center", gap: 6 }}><PenLine size={18} /> {fmtDate(date)}</div>
-            <div className="diary-sub">{isShared ? "共享画板 · 两人都能看到" : "私人画板 · 只有自己看到"}</div>
+          <div style={{minWidth:0, flex: 1}}>
+            <div className="diary-title" style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}><PenLine size={18} flexShrink={0} /> {fmtDate(date)}</div>
+            <div className="diary-sub" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{isShared ? "共享画板 · 两人都能看到" : "私人画板 · 只有自己看到"}</div>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
             {saveErr && <span style={{ fontSize: 12, color: "#dd4f68" }}>{saveErr}</span>}
-            <button className="btn-submit" style={{ padding: "6px 14px", fontSize: 13, background: "rgba(127,127,127,0.15)", color: "var(--text)", boxShadow: "none" }} onClick={saveAsSticker} disabled={savingSticker || saving || loading}>
-              {savingSticker ? "处理中..." : "存为贴纸"}
-            </button>
             <button className="btn-submit" style={{ padding: "6px 14px", fontSize: 13 }} onClick={save} disabled={saving || loading || savingSticker}>
               {saving ? "保存中..." : "保存"}
             </button>
@@ -2281,14 +2293,6 @@ function DrawingModal({ onClose, date, isShared }) {
             <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
               <button className="draw-tool-btn" onClick={undo} disabled={!canUndo} title="撤销 (Ctrl+Z)">↩</button>
               <button className="draw-tool-btn" onClick={redo} disabled={!canRedo} title="重做 (Ctrl+Shift+Z)">↪</button>
-              {confirmClear
-                ? <span style={{ display: "flex", gap: 4, alignItems: "center", fontSize: 12 }}>
-                    确定清空?
-                    <button className="draw-tool-btn" style={{ color: "#dd4f68" }} onClick={clear}>确认</button>
-                    <button className="draw-tool-btn" onClick={() => setConfirmClear(false)}>取消</button>
-                  </span>
-                : <button className="draw-tool-btn" onClick={() => setConfirmClear(true)} title="清空">✕</button>
-              }
             </div>
           </div>
           <div className="draw-palette">
@@ -2301,6 +2305,30 @@ function DrawingModal({ onClose, date, isShared }) {
               onChange={e => { setColor(e.target.value); setTool("pen"); }}
               title="自定义颜色"
               style={{ width: 24, height: 24, padding: 0, border: "none", borderRadius: 4, cursor: "pointer", background: "none" }} />
+          </div>
+          
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <button className="pbtn" style={{ flex: 1, padding: "8px 0", fontSize: 13, background: "var(--surface-strong)", border: "1px solid var(--line)" }} onClick={saveAsSticker} disabled={savingSticker || saving || loading}>
+              {savingSticker ? "处理中..." : "存为贴纸"}
+            </button>
+            {confirmClear ? (
+              <button className="pbtn" style={{ flex: 1, padding: "8px 0", fontSize: 13, background: "#dd4f68", color: "white", border: "none" }} onClick={() => { clear(); setConfirmClear(false); }}>
+                确认清空
+              </button>
+            ) : (
+              <button className="pbtn" style={{ flex: 1, padding: "8px 0", fontSize: 13, background: "var(--surface-strong)", border: "1px solid var(--line)" }} onClick={() => { setConfirmClear(true); setConfirmDelete(false); }}>
+                清空画板
+              </button>
+            )}
+            {confirmDelete ? (
+              <button className="pbtn" style={{ flex: 1, padding: "8px 0", fontSize: 13, background: "#dd4f68", color: "white", border: "none" }} onClick={deleteBoard} disabled={saving}>
+                确认删除
+              </button>
+            ) : (
+              <button className="pbtn" style={{ flex: 1, padding: "8px 0", fontSize: 13, background: "var(--surface-strong)", border: "1px solid var(--line)", color: "#dd4f68" }} onClick={() => { setConfirmDelete(true); setConfirmClear(false); }}>
+                删除画板
+              </button>
+            )}
           </div>
         </div>
       </div>
