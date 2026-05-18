@@ -466,7 +466,7 @@ function Calendar({ curDate, events, selDate, onSelectDay, onChangeMonth, onJump
       if (e.type === "together") return false;
       return e.owner === ME || e.ownerEmail === user?.email;
     }
-    if (e.type === "personal") return false;
+    if (e.calendar === "mine") return false;
     if (e.private && e.ownerEmail !== user?.email) return false;
     return true;
   });
@@ -645,7 +645,7 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
       if (e.type === "together") return false;
       return e.owner === ME || e.ownerEmail === user?.email;
     }
-    if (e.type === "personal") return false;
+    if (e.calendar === "mine") return false;
     if (e.private && e.ownerEmail !== user?.email) return false;
     return true;
   });
@@ -1054,6 +1054,7 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, v
         title: safeTitle, date, endDate: endDate || null, type,
         owner: shared ? null : ME,
         ownerEmail: user?.email,
+        calendar: initEdit?.calendar || (viewMode === "mine" ? "mine" : "shared"),
         note: safeNote, allDay,
         time: allDay ? null : time || null,
         repeat: repeat && type === "anniversary",
