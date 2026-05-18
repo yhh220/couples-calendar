@@ -583,10 +583,12 @@ function Calendar({ curDate, events, selDate, onSelectDay, onChangeMonth, onJump
 // COMMENTS SECTION
 // ─────────────────────────────────────────
 function CommentsSection({ eventId }) {
-  const { user } = useMe();
+  const { user, usersInfo } = useMe();
   const [comments, setComments] = useState([]);
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [editText, setEditText] = useState("");
 
   useEffect(() => {
     if (!eventId) return;
@@ -608,15 +610,58 @@ function CommentsSection({ eventId }) {
     } finally { setLoading(false); }
   };
 
+  const saveEdit = async (c) => {
+    const clean = cleanText(editText, 300);
+    if (!clean) return;
+    setLoading(true);
+    try {
+      await updateDoc(doc(db, "events", eventId, "comments", c.id), { text: clean, updatedAt: serverTimestamp() });
+      setEditingId(null);
+    } catch (e) { alert("编辑失败: " + e.message); }
+    finally { setLoading(false); }
+  };
+
+  const deleteComment = async (cId) => {
+    if (!window.confirm("确定删除这条评论吗？")) return;
+    try { await deleteDoc(doc(db, "events", eventId, "comments", cId)); }
+    catch (e) { alert("删除失败: " + e.message); }
+  };
+
   return (
     <div className="comments-section">
       {comments.length === 0 && <div style={{color:"var(--muted)",fontSize:12,textAlign:"center",padding:"8px 0"}}>还没有评论</div>}
-      {comments.map(c => (
-        <div key={c.id} className={`comment ${c.ownerEmail === HIM_EMAIL ? "him" : "her"}`}>
-          <span className="comment-avatar" style={{ color: c.ownerEmail === HIM_EMAIL ? "var(--him)" : "var(--her)", display: "flex", alignItems: "center", justifyContent: "center" }}><Heart fill="currentColor" strokeWidth={0} size={16} /></span>
-          <span className="comment-text">{c.text}</span>
-        </div>
-      ))}
+      {comments.map(c => {
+        const uInfo = usersInfo[c.ownerEmail];
+        const isOwner = c.ownerEmail === user?.email;
+        const color = c.ownerEmail === HIM_EMAIL ? "var(--him)" : "var(--her)";
+        return (
+          <div key={c.id} className={`comment ${c.ownerEmail === HIM_EMAIL ? "him" : "her"}`}>
+            <span className="comment-avatar" style={{ color: color, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", background: color }}>
+              {uInfo?.photoUrl ? <img src={uInfo.photoUrl} alt="avatar" style={{width:"100%",height:"100%",objectFit:"cover"}} />
+              : <span style={{fontSize:12,color:"white"}}>{uInfo?.avatarEmoji || (c.ownerEmail === HIM_EMAIL ? "🖤" : "🩷")}</span>}
+            </span>
+            <div className="comment-text-box" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+              {editingId === c.id ? (
+                <div style={{ display: "flex", gap: 6, width: "100%" }}>
+                  <input className="f-input" style={{ flex: 1, padding: "4px 8px", fontSize: 12, minHeight: 28 }} autoFocus value={editText} onChange={e => setEditText(e.target.value)} onKeyDown={e => e.key === "Enter" && saveEdit(c)} />
+                  <button className="icon-btn" style={{width:28,height:28}} onClick={() => saveEdit(c)} disabled={loading}><Check size={12} /></button>
+                  <button className="icon-btn" style={{width:28,height:28}} onClick={() => setEditingId(null)}><X size={12} /></button>
+                </div>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                  <span className="comment-text">{c.text}</span>
+                  {isOwner && (
+                    <div style={{ display: "flex", gap: 4, opacity: 0.6 }}>
+                      <button style={{background:"none",border:"none",padding:2,cursor:"pointer",color:"var(--muted)"}} onClick={() => { setEditingId(c.id); setEditText(c.text); }}><Edit2 size={10} /></button>
+                      <button style={{background:"none",border:"none",padding:2,cursor:"pointer",color:"#dd4f68"}} onClick={() => deleteComment(c.id)}><Trash2 size={10} /></button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
       <div className="comment-input-row">
         <input className="f-input comment-input" placeholder="写评论..." value={text}
           onChange={e => setText(e.target.value)}
@@ -629,16 +674,47 @@ function CommentsSection({ eventId }) {
   );
 }
 
+function StatEventsModal({ title, events, color, onClose, onJumpTo }) {
+  if (!events) return null;
+  return (
+    <div className="overlay open" onClick={e => e.target.classList.contains("overlay") && onClose()}>
+      <div className="modal" style={{ maxWidth: 400 }}>
+        <div className="modal-handle" />
+        <div className="modal-hdr" style={{ paddingBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 14, height: 14, borderRadius: "50%", background: color }} />
+            <div className="modal-title" style={{ fontSize: 16 }}>{title}</div>
+          </div>
+          <button className="modal-close" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="ev-list" style={{ marginTop: 0, maxHeight: "60vh", overflowY: "auto", paddingRight: 4 }}>
+          {events.length === 0 && <div className="empty-state">本月没有此类活动</div>}
+          {events.map((e, i) => (
+            <div key={e.id + i} className="search-result-item" style={{ cursor: "pointer", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 12, marginBottom: 8, padding: 12, display: "flex", alignItems: "center", gap: 12 }} onClick={() => { onJumpTo(e.date); onClose(); }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: "var(--text)" }}>{e.title}</div>
+                <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>{e.date}{e.note ? ` · ${e.note}` : ""}</div>
+              </div>
+              <ChevronRight size={16} color="var(--muted)" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────
 // SIDEBAR
 // ─────────────────────────────────────────
-function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, viewMode, drawingData }) {
+function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, viewMode, drawingData, onJumpTo }) {
   const { user, ME } = useMe();
   const [expandedId, setExpandedId] = useState(null);
   const [expandStats, setExpandStats] = useState(false);
   const [diaryDate, setDiaryDate] = useState(null);
   const [diaryText, setDiaryText] = useState(null);
   const [diaryDraw, setDiaryDraw] = useState(null);
+  const [statModalData, setStatModalData] = useState(null);
 
   const filterForView = evList => evList.filter(e => {
     if (viewMode === "mine") {
@@ -692,8 +768,8 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
     return e;
   }).filter(Boolean).filter(e => (e.endDate || e.date) >= today && e.type !== "holiday").sort((a,b) => a.date.localeCompare(b.date))[0];
 
-  const canEdit = e => !e.locked && (e.source === "school" ? false : (e.ownerEmail === user?.email || e.type === "together" || e.type === "anniversary"));
-  const canDelete = e => !e.locked && (e.source === "school" || e.ownerEmail === user?.email || e.type === "together" || e.type === "anniversary");
+  const canEdit = e => !e.locked && (e.source === "school" ? true : (e.calendar === "shared" || e.ownerEmail === user?.email || e.type === "together" || e.type === "anniversary"));
+  const canDelete = e => !e.locked && (e.source === "school" || e.calendar === "shared" || e.ownerEmail === user?.email || e.type === "together" || e.type === "anniversary");
   const ownerLabel = e => {
     if (!e.ownerEmail) return null;
     return e.ownerEmail === user?.email ? "你" : (e.ownerEmail === HIM_EMAIL ? "他" : "她");
@@ -773,7 +849,7 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
                 <div className="ev-body" onClick={() => setExpandedId(isExpanded ? null : (e.id + e.date))}>
                   <div className="ev-name-row">
                     <div className="ev-name">{e.title}</div>
-                    {(e.type === "assign" || e.type === "exam" || e.type === "work") && e.ownerEmail && (
+                    {e.ownerEmail && (
                       <span className={`owner-tag ${e.ownerEmail === HIM_EMAIL ? "him" : "her"}`}>
                         {e.ownerEmail === HIM_EMAIL ? "YH" : "SY"}
                       </span>
@@ -835,10 +911,11 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
             return (
               <div key={s.key} className="ov-stat" style={{"--stat-color": s.color, cursor: cnt > 0 ? "pointer" : "default"}}
                 onClick={() => {
-                  if (cnt === 0 || s.key === "holiday") return;
-                  const evs = s.key === "school" ? monthEvts.filter(e => e.source === "school") : monthEvts.filter(e => e.type === s.key);
-                  const info = evs.map(e => `${e.date} : ${e.title}`).join("\n");
-                  alert(`本月【${s.label}】包含以下活动：\n\n${info}\n\n👉 请在日历上点击对应的日期，然后在侧边栏中删除它。`);
+                  if (cnt === 0) return;
+                  const evs = s.key === "school" ? monthEvts.filter(e => e.source === "school") 
+                            : s.key === "holiday" ? MY_HOLIDAYS.filter(h => h.date.startsWith(pre) && new Date(h.date + "T00:00:00").getDay() >= 1 && new Date(h.date + "T00:00:00").getDay() <= 5).map(h => ({id: h.date, title: h.name, date: h.date}))
+                            : monthEvts.filter(e => e.type === s.key);
+                  setStatModalData({ title: `本月 ${s.label}`, events: evs, color: s.color });
                 }}>
                 <div className="ov-stat-icon">{s.icon}</div>
                 <div className="ov-stat-count">{cnt}</div>
@@ -872,6 +949,15 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
       {diaryDate && <StickerModal date={diaryDate} isShared={viewMode === "shared"} onClose={() => setDiaryDate(null)} />}
       {diaryText && <DiaryTextModal date={diaryText} isShared={viewMode === "shared"} onClose={() => setDiaryText(null)} />}
       {diaryDraw && <DrawingModal date={diaryDraw} isShared={viewMode === "shared"} onClose={() => setDiaryDraw(null)} />}
+      {statModalData && (
+        <StatEventsModal
+          title={statModalData.title}
+          events={statModalData.events}
+          color={statModalData.color}
+          onClose={() => setStatModalData(null)}
+          onJumpTo={onJumpTo}
+        />
+      )}
     </div>
   );
 }
@@ -2329,7 +2415,8 @@ function ProfileDrawer({ open, onClose, onLogout }) {
 // ─────────────────────────────────────────
 // SCHOOL CALENDAR MODAL
 // ─────────────────────────────────────────
-function SchoolCalendarModal({ open, onClose, events, onAdd, onImport, onDelete }) {
+function SchoolCalendarModal({ open, onClose, events, onAdd, onUpdate, onDelete }) {
+  const [editingId, setEditingId] = useState(null);
   const [title, setTitle] = useState("");
   const [date, setDate] = useState(todayDs());
   const [endDate, setEndDate] = useState("");
@@ -2353,10 +2440,30 @@ function SchoolCalendarModal({ open, onClose, events, onAdd, onImport, onDelete 
     setLoading(true); setError("");
     try {
       const evType = schoolTypeToEvType[schoolType] ?? "assign";
-      await onAdd({ title: safeTitle, date, endDate: endDate||null, type: evType, schoolType, owner, source: "school", allDay: true });
+      if (editingId) {
+        await onUpdate({ id: editingId, title: safeTitle, date, endDate: endDate||null, type: evType, schoolType, owner, source: "school", allDay: true });
+        setEditingId(null);
+      } else {
+        await onAdd({ title: safeTitle, date, endDate: endDate||null, type: evType, schoolType, owner, source: "school", allDay: true });
+      }
       setTitle(""); setEndDate("");
-    } catch { setError("保存失败，请重试。"); }
+    } catch (e) { setError("保存失败，请重试。" + e.message); }
     finally { setLoading(false); }
+  };
+
+  const handleEdit = (e) => {
+    setEditingId(e.id);
+    setTitle(e.title);
+    setDate(e.date);
+    setEndDate(e.endDate || "");
+    setSchoolType(e.schoolType || "exam");
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setTitle("");
+    setDate(todayDs());
+    setEndDate("");
   };
 
   if (!open) return null;
@@ -2375,7 +2482,7 @@ function SchoolCalendarModal({ open, onClose, events, onAdd, onImport, onDelete 
         <div className="school-modal-body">
           {/* Left: Add form */}
           <div className="school-panel">
-            <div className="school-panel-title">➕ 添加事件</div>
+            <div className="school-panel-title">{editingId ? "✏️ 编辑事件" : "➕ 添加事件"}</div>
             <div className="f-group">
               <label className="f-label">标题</label>
               <input className="f-input" maxLength={LIMITS.title} value={title}
@@ -2398,9 +2505,14 @@ function SchoolCalendarModal({ open, onClose, events, onAdd, onImport, onDelete 
               </select>
             </div>
             {error && <div className="form-error" style={{marginTop:10}}>{error}</div>}
-            <button className="btn-submit school-submit" style={{marginTop:14}} onClick={submitOne} disabled={loading}>
-              <Plus size={16} /> {loading ? "添加中..." : "确认添加"}
-            </button>
+            <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+              <button className="btn-submit school-submit" style={{flex:1}} onClick={submitOne} disabled={loading}>
+                {editingId ? (loading ? "保存中..." : "保存修改") : (loading ? "添加中..." : "确认添加")}
+              </button>
+              {editingId && (
+                <button className="btn-cancel" style={{padding: "0 16px", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 12}} onClick={cancelEdit}>取消</button>
+              )}
+            </div>
           </div>
 
           {/* Right: Events list */}
@@ -2418,7 +2530,10 @@ function SchoolCalendarModal({ open, onClose, events, onAdd, onImport, onDelete 
                     <div className="school-row-title">{e.title}</div>
                     <div className="ev-meta">{e.date}{e.endDate ? ` – ${e.endDate}` : ""}</div>
                   </div>
-                  <button className="ev-del" onClick={() => onDelete(e)}><X size={13} /></button>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button className="ev-del" onClick={() => handleEdit(e)}><Edit2 size={13} /></button>
+                    <button className="ev-del" onClick={() => onDelete(e)}><X size={13} /></button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -2478,12 +2593,23 @@ function AppContent() {
 
   const ME = user?.email === HIM_EMAIL ? "him" : "her";
   const PARTNER = ME === "him" ? "her" : "him";
+  const [usersInfo, setUsersInfo] = useState({});
 
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
     storageSet("theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (!user) return;
+    const unsub = onSnapshot(collection(db, "users"), snap => {
+      const map = {};
+      snap.forEach(d => { map[d.data().email] = d.data(); });
+      setUsersInfo(map);
+    });
+    return unsub;
+  }, [user]);
 
   const toggleTheme = () => setTheme(t => t === "light" ? "dark" : "light");
 
@@ -2744,7 +2870,13 @@ function AppContent() {
 
   const handleDeleteSchool = async (event) => {
     if (event.locked) return;
-    try { await deleteDoc(doc(db, "school_events", event.id)); } catch (e) { console.error(e); }
+    try { await deleteDoc(doc(db, "school_events", event.id)); } catch (e) { alert("删除失败：" + e.message); console.error(e); }
+  };
+
+  const handleUpdateSchool = async (data) => {
+    const safeData = normalizeSchoolInput(data);
+    if (!safeData) return;
+    try { await updateDoc(doc(db, "school_events", data.id), safeData); } catch (e) { alert("更新失败：" + e.message); console.error(e); }
   };
 
   const openEdit = (e) => {
@@ -2810,7 +2942,7 @@ function AppContent() {
   );
 
   return (
-    <UserCtx.Provider value={{ user, ME, PARTNER }}>
+    <UserCtx.Provider value={{ user, ME, PARTNER, usersInfo }}>
       <OfflineBanner />
       {toast && (
         <div className="notif-toast">
@@ -2899,7 +3031,8 @@ function AppContent() {
               drawingData={viewMode === "mine" ? drawingData : sharedDrawingData}
               onDelete={e => setDeleteTarget(e)}
               onEdit={e => openEdit(e)}
-              onPhotoClick={(srcs, idx) => setLightbox({ srcs, idx })} />
+              onPhotoClick={(srcs, idx) => setLightbox({ srcs, idx })}
+              onJumpTo={d => { setCurDate(new Date(d + "T00:00:00")); setSelDate(d); }} />
           </div>
         </div>
       </div>
@@ -2916,7 +3049,7 @@ function AppContent() {
       />
 
       <SchoolCalendarModal open={schoolOpen} onClose={() => setSchoolOpen(false)}
-        events={schoolEvents} onAdd={handleAddSchool} onDelete={handleDeleteSchool} />
+        events={schoolEvents} onAdd={handleAddSchool} onUpdate={handleUpdateSchool} onDelete={handleDeleteSchool} />
 
       {deleteTarget && (
         <DeleteConfirmPopup
