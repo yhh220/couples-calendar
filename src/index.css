@@ -1,4 +1,5 @@
-@import url("https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap");
+/* Font is loaded via <link rel="stylesheet"> in index.html (parallel,
+   non-blocking) — avoid CSS @import which blocks render of this file. */
 
 /* ─────────────────────────────────────────
    DESIGN TOKENS
@@ -9,7 +10,8 @@
   --surface: rgba(255, 255, 255, 0.88);
   --surface-strong: #ffffff;
   --text: #2c2c3a;
-  --muted: #7d727d;
+  /* WCAG AA 4.5:1+ on --bg (was #7d727d ≈ 4.3:1) */
+  --muted: #6c5f6b;
   --line: rgba(80, 53, 72, 0.14);
   --shadow: 0 18px 50px rgba(91, 55, 74, 0.14);
   --shadow-sm: 0 4px 16px rgba(91, 55, 74, 0.10);
@@ -30,7 +32,10 @@
   --radius-md: 16px;
   --radius-lg: 24px;
   --radius-xl: 32px;
-  font-family: "Nunito", ui-rounded, ui-sans-serif, system-ui, sans-serif;
+  /* Nunito has no CJK glyphs — explicit fallback chain keeps Chinese
+     looking consistent across macOS / iOS / Windows / Android. */
+  font-family: "Nunito", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC",
+               "Source Han Sans SC", ui-rounded, ui-sans-serif, system-ui, sans-serif;
   color: var(--text);
   background: var(--bg);
   font-synthesis: none;
@@ -55,12 +60,46 @@
    RESET & BASE
 ───────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; min-height: 100vh; }
+/* 100dvh accounts for iOS dynamic URL bar — 100vh leaves a gap. */
+body { margin: 0; min-width: 320px; min-height: 100dvh; }
+/* Prevent iOS auto-zoom when focusing form controls (≥16px font). */
 button, input, select, textarea { font: inherit; }
+input, select, textarea { font-size: 16px; }
 button { cursor: pointer; border: 0; background: none; }
 svg { display: block; flex-shrink: 0; }
 img { display: block; max-width: 100%; }
 a { color: inherit; }
+
+/* Keyboard focus ring — visible on every primary interactive element so
+   keyboard / Switch Control users can see what's focused. */
+:focus-visible { outline: 2px solid var(--together); outline-offset: 2px; border-radius: 4px; }
+.icon-btn:focus-visible,
+.cal-nav-btn:focus-visible,
+.modal-close:focus-visible,
+.fab:focus-visible,
+.pbtn:focus-visible,
+.btn-submit:focus-visible,
+.btn-google:focus-visible,
+.ev-action-btn:focus-visible,
+.weekday-pill:focus-visible,
+.month-pill:focus-visible,
+.cal-view-pill:focus-visible,
+.view-opt:focus-visible,
+.cal-title-btn:focus-visible,
+.draw-tool-btn:focus-visible { outline: 2px solid var(--together); outline-offset: 3px; }
+
+/* Custom scrollbar (Edge / Chrome / Safari) — default Edge dark bars
+   look out of place on the light surface. */
+* { scrollbar-width: thin; scrollbar-color: rgba(127,127,127,.32) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(127,127,127,.32);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background-color: rgba(127,127,127,.5); }
 
 /* ─────────────────────────────────────────
    BLOBS (background decoration)
@@ -73,6 +112,10 @@ a { color: inherit; }
   opacity: .22;
   pointer-events: none;
   z-index: 0;
+  /* Hoist to its own compositing layer so the blur isn't repainted
+     every frame during scroll on iPad / lower-end Android. */
+  will-change: transform;
+  transform: translateZ(0);
 }
 .blob-1 { left: -90px; top: -80px; background: #ff7aa8; }
 .blob-2 { right: -110px; top: 18%; background: #63c7ff; }
@@ -324,8 +367,20 @@ em { color: var(--together); font-style: normal; }
 .cal-card, .detail-card, .ov-card { border-radius: var(--radius-lg); padding: 18px; }
 .cal-card { position: relative; overflow: hidden; }
 .cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-.cal-nav h2 { margin: 0; font-size: 20px; font-weight: 800; }
-.cal-title-btn { cursor: pointer; border-radius: 10px; padding: 4px 10px; transition: background .15s; user-select: none; }
+.cal-title-btn {
+  cursor: pointer;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.2;
+  border-radius: 10px;
+  padding: 4px 10px;
+  transition: background .15s;
+  user-select: none;
+}
 .cal-title-btn:hover { background: rgba(221,79,104,.1); }
 
 .month-picker-overlay {
@@ -507,7 +562,7 @@ em { color: var(--together); font-style: normal; }
 .owner-tag.her { background: rgba(232,128,154,.15); color: var(--her); }
 .ev-meta, .ev-footer { color: var(--muted); }
 .ev-meta { font-size: 12px; margin-top: 2px; }
-.ev-footer { font-size: 10px; margin-top: 3px; }
+.ev-footer { font-size: 11px; margin-top: 3px; }
 .ev-photo-wrap { position: relative; flex-shrink: 0; }
 .ev-photo { width: 44px; height: 44px; border-radius: 10px; object-fit: cover; cursor: pointer; display: block; }
 .ev-photo-count {
@@ -522,7 +577,7 @@ em { color: var(--together); font-style: normal; }
 @media (hover: none) { .ev-actions { opacity: 1; } }
 @media (max-width: 800px) { .ev-actions { opacity: 1; } }
 .ev-action-btn {
-  width: 26px; height: 26px;
+  width: 32px; height: 32px;
   border-radius: 8px;
   border: 1px solid var(--line);
   background: var(--surface);
@@ -531,7 +586,7 @@ em { color: var(--together); font-style: normal; }
   cursor: pointer;
   transition: background .12s, color .12s, border-color .12s;
 }
-.ev-action-btn svg { width: 12px; height: 12px; }
+.ev-action-btn svg { width: 13px; height: 13px; }
 .ev-action-btn:hover { background: var(--surface-strong); color: var(--text); border-color: var(--line); }
 .ev-action-btn.del:hover { background: rgba(179,38,30,.1); color: #b3261e; border-color: rgba(179,38,30,.2); }
 
@@ -570,7 +625,7 @@ em { color: var(--together); font-style: normal; }
 .ov-stat-icon { width: 18px; height: 18px; color: var(--stat-color); }
 .ov-stat-icon svg { width: 100%; height: 100%; }
 .ov-stat-count { font-size: 20px; font-weight: 900; line-height: 1; }
-.ov-stat-label { font-size: 10px; color: var(--muted); font-weight: 600; letter-spacing: .02em; text-align: center; }
+.ov-stat-label { font-size: 11px; color: var(--muted); font-weight: 600; letter-spacing: .02em; text-align: center; }
 .ov-expanded-stats { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); display: grid; gap: 6px; }
 .ov-stat-row { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
 .ov-stat-row.total-row { font-weight: 800; color: var(--text); padding-top: 6px; border-top: 1px solid var(--line); margin-top: 2px; }
@@ -985,7 +1040,8 @@ select.f-input { cursor: pointer; }
 .comment.him .comment-text { border-color: rgba(84,136,232,.22); }
 .comment.her .comment-text { border-color: rgba(232,128,154,.22); }
 .comment-input-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
-.comment-input { min-height: 36px; border-radius: 10px; font-size: 13px; }
+/* 16px lets iOS Safari focus the field without auto-zooming the page. */
+.comment-input { min-height: 38px; border-radius: 10px; }
 
 /* ─────────────────────────────────────────
    DIARY CANVAS
@@ -1313,26 +1369,31 @@ select.f-input { cursor: pointer; }
   /* Header */
   h1 { font-size: clamp(24px, 8vw, 36px); }
   .header p { font-size: 12px; }
-  .icon-btn { width: 36px; height: 36px; }
-  .cal-nav-btn { width: 32px; height: 32px; }
+  /* WCAG / Apple HIG: ≥ 40px touch target on mobile. */
+  .icon-btn { width: 40px; height: 40px; }
+  .cal-nav-btn { width: 38px; height: 38px; }
   .header-actions { gap: 4px; }
 
-  /* Timer */
-  .timer-banner { flex-direction: column; align-items: flex-start; gap: 10px; padding: 14px 16px; }
-  .timer-heart { width: 44px; height: 44px; }
-  .timer-heart svg { width: 20px; height: 20px; }
-  .timer-count { font-size: 19px; }
-  .timer-count span { font-size: 28px; }
-  .timer-sub { font-size: 11px; }
+  /* Timer — compact row layout on mobile so the calendar is in view
+     without scrolling. */
+  .timer-banner { flex-direction: row; align-items: center; gap: 12px; padding: 12px 14px; margin-bottom: 10px; }
+  .timer-left { gap: 12px; }
+  .timer-heart { width: 38px; height: 38px; border-radius: 14px; }
+  .timer-heart svg { width: 18px; height: 18px; }
+  .timer-label { font-size: 10px; }
+  .timer-count { font-size: 14px; }
+  .timer-count span { font-size: 22px; }
+  .timer-sub { font-size: 10px; margin-top: 1px; }
 
-  /* Countdown cards */
-  .countdowns { gap: 8px; }
-  .cd-card { padding: 11px 10px; }
+  /* Countdown cards — denser so two cards fit a 360px screen comfortably */
+  .countdowns { gap: 8px; margin-bottom: 10px; }
+  .cd-card { padding: 10px 11px; }
+  .cd-top { gap: 6px; margin-bottom: 0; }
   .cd-label { font-size: 12px; }
-  .cd-num { font-size: 26px; }
-  .cd-name { font-size: 12px; }
-  .cd-date-row { font-size: 11px; }
-  .cd-countdown { margin-top: 8px; }
+  .cd-num { font-size: 22px; }
+  .cd-name { font-size: 12px; margin-top: 4px; }
+  .cd-date-row { font-size: 11px; margin-top: 2px; }
+  .cd-countdown { margin-top: 6px; }
   .cd-pre, .cd-suf { font-size: 12px; }
 
   /* Calendar */
@@ -1344,7 +1405,7 @@ select.f-input { cursor: pointer; }
   .day-pips { margin-top: 4px; gap: 2px; }
   .pip { width: 5px; height: 5px; }
   .day-sticker-thumb { width: 16px; height: 16px; }
-  .legend { gap: 7px; font-size: 10px; }
+  .legend { gap: 7px; font-size: 11px; }
   .legend-pip { width: 6px; height: 6px; }
 
   /* Overview */
@@ -1356,8 +1417,8 @@ select.f-input { cursor: pointer; }
 
   /* Event items */
   .ev-name { font-size: 13px; }
-  .ev-action-btn { width: 24px; height: 24px; }
-  .ev-action-btn svg { width: 11px; height: 11px; }
+  .ev-action-btn { width: 30px; height: 30px; }
+  .ev-action-btn svg { width: 12px; height: 12px; }
 
   /* Type grid */
   .type-card { min-height: 64px; padding: 10px 4px 8px; border-radius: 12px; }
@@ -1486,7 +1547,8 @@ html.theme-ready :is(
   color: var(--text);
   border-radius: var(--radius-sm);
   padding: 12px 13px; outline: none;
-  font: inherit; font-size: 14px; line-height: 1.6;
+  font: inherit; line-height: 1.6;
+  /* font-size relies on global 16px rule — prevents iOS focus zoom. */
   transition: border-color .15s, box-shadow .15s;
 }
 .diary-textarea:focus { border-color: var(--together); box-shadow: 0 0 0 3px rgba(221,79,104,.11); }
@@ -1622,10 +1684,13 @@ html.theme-ready :is(
    PUSH NOTIFICATION UI
 ───────────────────────────────────────── */
 .notif-prompt-banner {
-  position: fixed; top: 0; left: 0; right: 0; z-index: 998;
+  /* Sits below diary/drawing overlays (120) so it never floats on top
+     of a fullscreen modal — was at 998 which blocked modal content. */
+  position: fixed; top: 0; left: 0; right: 0; z-index: 55;
   background: var(--surface); border-bottom: 1px solid var(--line);
   padding: 10px 16px; display: flex; align-items: center; gap: 8px;
   font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,.08);
+  padding-top: max(10px, env(safe-area-inset-top, 0px));
 }
 .notif-prompt-banner span { flex: 1; font-weight: 600; }
 .notif-prompt-btn {
@@ -1664,6 +1729,45 @@ html.theme-ready :is(
 .btn-add:hover svg, .fab:hover svg {
   transform: rotate(90deg) scale(1.1);
 }
+
+/* Touch / hybrid devices: kill lift transforms so a tap doesn't leave
+   the element visually displaced. Without this, Windows 11 touchscreen
+   and iOS Safari sticky-hover make cells/buttons "jump" on tap. */
+@media (hover: none), (pointer: coarse) {
+  .day-cell:hover,
+  .week-day-col:hover,
+  .fab:hover,
+  .btn-add:hover,
+  .btn-submit:not(:disabled):hover,
+  .btn-google:hover,
+  .pbtn.primary:hover,
+  .month-pill:hover,
+  .photo-strip-item img:hover,
+  .draw-color-swatch:hover,
+  .sticker-lib-item:hover,
+  .icon-btn:hover,
+  .cal-nav-btn:hover,
+  .modal-close:hover {
+    transform: none;
+    box-shadow: var(--shadow-sm);
+  }
+}
+
+/* Honour reduced-motion across decorative animations, not just theme
+   transitions. */
+@media (prefers-reduced-motion: reduce) {
+  .login-aura { animation: none; }
+  .loading-heart { animation: none; }
+  .loading-dots span { animation: none; opacity: .6; }
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* Calendar nav title wraps cleanly on narrow phones (e.g. 360 px). */
+.cal-nav { flex-wrap: wrap; row-gap: 6px; }
+.cal-title-btn { font-size: clamp(15px, 4.4vw, 20px); white-space: nowrap; }
 
 .ev-action-btn:hover svg {
   transform: scale(1.1) translateY(-1px);

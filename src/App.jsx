@@ -1,4 +1,5 @@
 import { Component, useState, useEffect, useRef, useMemo, useCallback, createContext, useContext } from "react";
+import { useRegisterSW } from "virtual:pwa-register/react";
 import Cropper from "react-easy-crop";
 import {
   Heart, Sun, Moon, Plus, ChevronLeft, ChevronRight, Check, X,
@@ -58,6 +59,25 @@ function storageGet(key, fallback = null) { try { return localStorage.getItem(ke
 function storageSet(key, value) { try { localStorage.setItem(key, value); } catch {} }
 function storageRemove(key) { try { localStorage.removeItem(key); } catch {} }
 function safeArray(v) { return Array.isArray(v) ? v : []; }
+
+// Close-on-Escape — shared by every modal so the contract stays consistent.
+function useEscape(onClose, enabled = true) {
+  useEffect(() => {
+    if (!enabled || !onClose) return;
+    const h = e => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [onClose, enabled]);
+}
+
+// Detect PWA / installed standalone mode (popup auth fails here on iOS).
+function isStandaloneDisplay() {
+  try {
+    return (typeof window !== "undefined" &&
+            (window.matchMedia?.("(display-mode: standalone)").matches ||
+             window.navigator.standalone === true));
+  } catch { return false; }
+}
 
 function cleanText(value, max = 120, { preserveNewlines = false } = {}) {
   const sanitized = String(value || "").split("").map(c => {
@@ -272,6 +292,23 @@ const TYPE_ICONS = {
 // ─────────────────────────────────────────
 // OFFLINE BANNER
 // ─────────────────────────────────────────
+function UpdatePrompt() {
+  const {
+    needRefresh: [needRefresh, setNeedRefresh],
+    updateServiceWorker,
+  } = useRegisterSW({
+    onRegisterError(err) { console.error("SW register failed:", err); },
+  });
+  if (!needRefresh) return null;
+  return (
+    <div className="notif-prompt-banner" role="status" aria-live="polite">
+      <span>🌟 新版本可用</span>
+      <button className="notif-prompt-btn accent" onClick={() => updateServiceWorker(true)}>刷新</button>
+      <button className="notif-prompt-btn" onClick={() => setNeedRefresh(false)}>稍后</button>
+    </div>
+  );
+}
+
 function OfflineBanner() {
   const [online, setOnline] = useState(navigator.onLine);
   useEffect(() => {
@@ -441,6 +478,7 @@ function Countdowns({ events }) {
 // ─────────────────────────────────────────
 function MonthPicker({ curDate, onSelect, onClose }) {
   const [pickerYear, setPickerYear] = useState(curDate.getFullYear());
+  useEscape(onClose);
   return (
     <div className="month-picker-overlay" onClick={e => e.target.classList.contains("month-picker-overlay") && onClose()}>
       <div className="month-picker">
@@ -469,7 +507,11 @@ function Calendar({ curDate, events, selDate, onSelectDay, onChangeMonth, onJump
   const [showPicker, setShowPicker] = useState(false);
   const today = todayDs();
 
-  const filterEvts = (allEvts) => allEvts.filter(e => {
+  // Memoize the per-day event computation: it is O(eventCount) per cell,
+  // and Calendar re-renders on every parent state change (selDate,
+  // modal toggles, etc.) — without this the month grid scans the full
+  // events array 42×N times per render.
+  const filterEvts = useCallback((allEvts) => allEvts.filter(e => {
     if (viewMode === "mine") {
       if (e.type === "holiday" || e.type === "anniversary" || e.source === "school") return true;
       if (e.type === "together" || e.calendar === "shared") return false;
@@ -478,53 +520,60 @@ function Calendar({ curDate, events, selDate, onSelectDay, onChangeMonth, onJump
     if (e.calendar === "mine") return false;
     if (e.private && e.ownerEmail !== user?.email) return false;
     return true;
-  });
+  }), [viewMode, ME, user?.email]);
 
   // Month view cells
-  const first = new Date(y,m,1).getDay();
-  const dim = new Date(y,m+1,0).getDate();
-  const dipm = new Date(y,m,0).getDate();
-  const total = Math.ceil((first+dim)/7)*7;
-  const cells = [];
-  for (let i = 0; i < total; i++) {
-    let day, off = 0;
-    if (i < first) { day = dipm-first+i+1; off = -1; }
-    else if (i >= first+dim) { day = i-first-dim+1; off = 1; }
-    else day = i-first+1;
-    const s = toDs(new Date(y, m+off, day));
-    cells.push({ day, off, s, evts: filterEvts(getEventsForDs(s, events)), holiday: getHolidayForDate(s) });
-  }
+  const cells = useMemo(() => {
+    const first = new Date(y,m,1).getDay();
+    const dim = new Date(y,m+1,0).getDate();
+    const dipm = new Date(y,m,0).getDate();
+    const total = Math.ceil((first+dim)/7)*7;
+    const out = [];
+    for (let i = 0; i < total; i++) {
+      let day, off = 0;
+      if (i < first) { day = dipm-first+i+1; off = -1; }
+      else if (i >= first+dim) { day = i-first-dim+1; off = 1; }
+      else day = i-first+1;
+      const s = toDs(new Date(y, m+off, day));
+      out.push({ day, off, s, evts: filterEvts(getEventsForDs(s, events)), holiday: getHolidayForDate(s) });
+    }
+    return out;
+  }, [y, m, events, filterEvts]);
 
   // Week view cells — week containing curDate (Sunday start)
-  const weekStart = new Date(curDate);
-  weekStart.setDate(curDate.getDate() - curDate.getDay());
-  const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
-  const weekDays = [];
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(weekStart); d.setDate(weekStart.getDate() + i);
-    const s = toDs(d);
-    weekDays.push({ d, s, evts: filterEvts(getEventsForDs(s, events)), holiday: getHolidayForDate(s) });
-  }
-
-  const wSm = `${weekStart.getMonth()+1}月${weekStart.getDate()}日`;
-  const wEm = weekEnd.getMonth() !== weekStart.getMonth()
-    ? `${weekEnd.getMonth()+1}月${weekEnd.getDate()}日`
-    : `${weekEnd.getDate()}日`;
+  const { weekDays, wSm, wEm } = useMemo(() => {
+    const weekStart = new Date(curDate);
+    weekStart.setDate(curDate.getDate() - curDate.getDay());
+    const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(weekStart); d.setDate(weekStart.getDate() + i);
+      const s = toDs(d);
+      days.push({ d, s, evts: filterEvts(getEventsForDs(s, events)), holiday: getHolidayForDate(s) });
+    }
+    return {
+      weekDays: days,
+      wSm: `${weekStart.getMonth()+1}月${weekStart.getDate()}日`,
+      wEm: weekEnd.getMonth() !== weekStart.getMonth()
+        ? `${weekEnd.getMonth()+1}月${weekEnd.getDate()}日`
+        : `${weekEnd.getDate()}日`,
+    };
+  }, [curDate, events, filterEvts]);
 
   return (
     <div className="cal-card">
       {showPicker && <MonthPicker curDate={curDate} onSelect={onJumpTo} onClose={() => setShowPicker(false)} />}
       <div className="cal-nav">
-        <button className="cal-nav-btn" onClick={() => onChangeMonth(-1)}><ChevronLeft size={18} /></button>
-        <h2 className="cal-title-btn" onClick={() => setShowPicker(true)}>
+        <button className="cal-nav-btn" onClick={() => onChangeMonth(-1)} aria-label="上个月"><ChevronLeft size={18} /></button>
+        <button type="button" className="cal-title-btn" onClick={() => setShowPicker(true)} aria-label="选择月份">
           {calView === "week" ? `${y}年 ${wSm} – ${wEm}` : `${y}年 ${MONTH_NAMES[m]}`}
-        </h2>
+        </button>
         <div style={{display:"flex",gap:6,alignItems:"center"}}>
-          <div className="cal-view-pills">
-            <button className={`cal-view-pill${calView==="month"?" active":""}`} onClick={() => onCalViewChange?.("month")}>月</button>
-            <button className={`cal-view-pill${calView==="week"?" active":""}`} onClick={() => onCalViewChange?.("week")}>周</button>
+          <div className="cal-view-pills" role="tablist" aria-label="日历视图">
+            <button role="tab" aria-selected={calView==="month"} className={`cal-view-pill${calView==="month"?" active":""}`} onClick={() => onCalViewChange?.("month")}>月</button>
+            <button role="tab" aria-selected={calView==="week"} className={`cal-view-pill${calView==="week"?" active":""}`} onClick={() => onCalViewChange?.("week")}>周</button>
           </div>
-          <button className="cal-nav-btn" onClick={() => onChangeMonth(1)}><ChevronRight size={18} /></button>
+          <button className="cal-nav-btn" onClick={() => onChangeMonth(1)} aria-label="下个月"><ChevronRight size={18} /></button>
         </div>
       </div>
 
@@ -652,7 +701,7 @@ function CommentsSection({ eventId, bothCanEdit = false }) {
             <div className="comment-text-box" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
               {editingId === c.id ? (
                 <div style={{ display: "flex", gap: 6, width: "100%" }}>
-                  <input className="f-input" style={{ flex: 1, padding: "4px 8px", fontSize: 13, minHeight: 32 }} autoFocus value={editText} onChange={e => setEditText(e.target.value)} onKeyDown={e => e.key === "Enter" && saveEdit(c)} />
+                  <input className="f-input" style={{ flex: 1, padding: "4px 10px", minHeight: 36 }} autoFocus value={editText} onChange={e => setEditText(e.target.value)} onKeyDown={e => e.key === "Enter" && saveEdit(c)} />
                   <button className="icon-btn" style={{width:32,height:32}} onClick={() => saveEdit(c)} disabled={loading}><Check size={14} /></button>
                   <button className="icon-btn" style={{width:32,height:32}} onClick={() => setEditingId(null)}><X size={14} /></button>
                 </div>
@@ -684,6 +733,7 @@ function CommentsSection({ eventId, bothCanEdit = false }) {
 }
 
 function StatEventsModal({ title, events, color, onClose, onJumpTo }) {
+  useEscape(onClose, Boolean(events));
   if (!events) return null;
   return (
     <div className="overlay open" onClick={e => e.target.classList.contains("overlay") && onClose()}>
@@ -1043,6 +1093,7 @@ function CropModal({ src, onConfirm, onCancel }) {
   const [aspect, setAspect] = useState(1);
   const [croppedAreaPx, setCroppedAreaPx] = useState(null);
   const [confirming, setConfirming] = useState(false);
+  useEscape(onCancel);
 
   const onCropComplete = useCallback((_, pixels) => setCroppedAreaPx(pixels), []);
 
@@ -1100,6 +1151,7 @@ function CropModal({ src, onConfirm, onCancel }) {
 function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, viewMode }) {
   const { user, ME } = useMe();
   const isEdit = Boolean(initEdit?.id);
+  useEscape(onClose, open);
   const [title, setTitle] = useState("");
   const [type, setType] = useState("work");
   const [date, setDate] = useState(defaultDate || todayDs());
@@ -1408,6 +1460,7 @@ function AddModal({ open, onClose, defaultDate, onSubmit, editEvent: initEdit, v
 // ─────────────────────────────────────────
 function DeleteConfirmPopup({ event, onClose, onConfirm }) {
   const hasRec = event?.recurrence?.type && event.recurrence.type !== "none";
+  useEscape(onClose);
   return (
     <div className="popup-overlay" onClick={e => e.target.classList.contains("popup-overlay") && onClose()}>
       <div className="popup-box">
@@ -1437,6 +1490,7 @@ function DeleteConfirmPopup({ event, onClose, onConfirm }) {
 // EDIT SCOPE POPUP (recurring events)
 // ─────────────────────────────────────────
 function EditScopePopup({ event, onClose, onEditThis, onEditAll }) {
+  useEscape(onClose);
   return (
     <div className="popup-overlay" onClick={e => e.target.classList.contains("popup-overlay") && onClose()}>
       <div className="popup-box">
@@ -1460,11 +1514,7 @@ function SearchOverlay({ events, onClose, onJumpTo }) {
   const [q, setQ] = useState("");
   const inputRef = useRef();
   useEffect(() => { inputRef.current?.focus(); }, []);
-  useEffect(() => {
-    const esc = e => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", esc);
-    return () => window.removeEventListener("keydown", esc);
-  }, [onClose]);
+  useEscape(onClose);
 
   const filtered = useMemo(() => {
     if (!q.trim()) return [];
@@ -1552,6 +1602,7 @@ function PhotoStrip({ events, onPhotoClick, onEdit }) {
 
 function StickerModal({ onClose, date, isShared = false }) {
   const { user } = useMe();
+  useEscape(onClose);
   const [placements, setPlacements] = useState([]);
   const [library, setLibrary] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -1850,6 +1901,7 @@ function DiaryTextModal({ onClose, date, isShared }) {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  useEscape(onClose);
 
   useEffect(() => {
     if (!user) return;
@@ -1909,6 +1961,7 @@ const DRAW_COLORS = [
 
 function DrawingModal({ onClose, date, isShared }) {
   const { user } = useMe();
+  useEscape(onClose);
   const [tool, setTool] = useState("pen");
   const [color, setColor] = useState("#000000");
   const [lineWidth, setLineWidth] = useState(4);
@@ -1957,7 +2010,10 @@ function DrawingModal({ onClose, date, isShared }) {
     const snap = ctx.getImageData(0, 0, commit.width, commit.height);
     const h = historyRef.current;
     h.past.push(snap);
-    if (h.past.length > 30) h.past.shift();
+    // Each ImageData is canvas.width × canvas.height × 4 bytes. On a
+    // retina iPad that's ~10MB per snapshot — keep the cap low so the
+    // page doesn't hit iOS Safari's 200MB memory limit and reload.
+    if (h.past.length > 12) h.past.shift();
     h.future = [];
     setCanUndo(h.past.length > 1);
     setCanRedo(false);
@@ -2160,7 +2216,15 @@ function DrawingModal({ onClose, date, isShared }) {
     ptsRef.current = [];
   }, [renderStroke, finalizeStroke]);
 
-  const onPointerCancel = onPointerUp;
+  // pointercancel may fire when the pen leaves capture range without a
+  // proper up event (Apple Pencil dropped, OS gesture intercept).
+  // Always reset the palm-rejection flag here, even if the pointerId
+  // doesn't match the active stroke — otherwise touch stays blocked
+  // until the user taps with the pen again.
+  const onPointerCancel = useCallback(e => {
+    if (e.pointerType === "pen") penActiveRef.current = false;
+    onPointerUp(e);
+  }, [onPointerUp]);
 
   const undo = useCallback(() => {
     const h = historyRef.current;
@@ -2455,6 +2519,7 @@ function DrawingModal({ onClose, date, isShared }) {
 // ─────────────────────────────────────────
 function ProfileDrawer({ open, onClose, onLogout }) {
   const { user, ME } = useMe();
+  useEscape(onClose, open);
   const [profile, setProfile] = useState(null);
   const [editName, setEditName] = useState(false);
   const [nameVal, setNameVal] = useState("");
@@ -2565,6 +2630,7 @@ function ProfileDrawer({ open, onClose, onLogout }) {
 // SCHOOL CALENDAR MODAL
 // ─────────────────────────────────────────
 function SchoolCalendarModal({ open, onClose, events, onAdd, onUpdate, onDelete }) {
+  useEscape(onClose, open);
   const [editingId, setEditingId] = useState(null);
   const [title, setTitle] = useState("");
   const [date, setDate] = useState(todayDs());
@@ -2965,12 +3031,24 @@ function AppContent() {
   };
 
   const handleLogin = async () => {
+    // iOS Safari rejects popup-based auth inside an installed PWA; on
+    // standalone we go straight to redirect to avoid the silent failure.
+    if (isStandaloneDisplay()) {
+      try { await signInWithRedirect(auth, provider); } catch (e) { console.error(e); }
+      return;
+    }
     try {
       await signInWithPopup(auth, provider);
     } catch (e) {
-      // Popup blocked (e.g. some mobile browsers) — fall back to redirect
-      if (e.code === "auth/popup-blocked" || e.code === "auth/popup-closed-by-user") {
-        try { await signInWithRedirect(auth, provider); } catch { /* ignore */ }
+      const fallbackCodes = new Set([
+        "auth/popup-blocked",
+        "auth/popup-closed-by-user",
+        "auth/cancelled-popup-request",
+        "auth/operation-not-supported-in-this-environment",
+        "auth/web-storage-unsupported",
+      ]);
+      if (fallbackCodes.has(e?.code)) {
+        try { await signInWithRedirect(auth, provider); } catch (err) { console.error(err); }
       } else {
         console.error(e);
       }
@@ -3121,6 +3199,7 @@ function AppContent() {
   return (
     <UserCtx.Provider value={{ user, ME, PARTNER, usersInfo }}>
       <OfflineBanner />
+      <UpdatePrompt />
       {toast && (
         <div className="notif-toast">
           <div className="notif-toast-title">{toast.title}</div>
