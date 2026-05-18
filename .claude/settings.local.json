@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(\\(Get-Content \"d:\\\\couples-calendar\\\\src\\\\App.jsx\" | Measure-Object -Line\\).Lines)",
+      "Bash(npm run *)",
+      "Bash(git add *)",
+      "Bash(git rm *)",
+      "Bash(git commit -m ' *)"
+    ]
+  }
+}
