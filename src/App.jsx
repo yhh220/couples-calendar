@@ -466,6 +466,7 @@ function Calendar({ curDate, events, selDate, onSelectDay, onChangeMonth, onJump
       if (e.type === "together") return false;
       return e.owner === ME || e.ownerEmail === user?.email;
     }
+    if (e.type === "personal") return false;
     if (e.private && e.ownerEmail !== user?.email) return false;
     return true;
   });
@@ -644,6 +645,7 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
       if (e.type === "together") return false;
       return e.owner === ME || e.ownerEmail === user?.email;
     }
+    if (e.type === "personal") return false;
     if (e.private && e.ownerEmail !== user?.email) return false;
     return true;
   });
