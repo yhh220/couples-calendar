@@ -519,6 +519,8 @@ em { color: var(--together); font-style: normal; }
 
 .ev-actions { display: flex; flex-direction: column; gap: 4px; opacity: 0; transition: opacity .15s; flex-shrink: 0; }
 .ev-item:hover .ev-actions { opacity: 1; }
+@media (hover: none) { .ev-actions { opacity: 1; } }
+@media (max-width: 800px) { .ev-actions { opacity: 1; } }
 .ev-action-btn {
   width: 26px; height: 26px;
   border-radius: 8px;
