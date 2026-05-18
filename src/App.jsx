@@ -833,7 +833,13 @@ function Sidebar({ selDate, events, onDelete, onEdit, onPhotoClick, curDate, vie
               : s.key === "school" ? monthEvts.filter(e => e.source === "school").length
               : typeCount(s.key);
             return (
-              <div key={s.key} className="ov-stat" style={{"--stat-color": s.color}}>
+              <div key={s.key} className="ov-stat" style={{"--stat-color": s.color, cursor: cnt > 0 ? "pointer" : "default"}}
+                onClick={() => {
+                  if (cnt === 0 || s.key === "holiday") return;
+                  const evs = s.key === "school" ? monthEvts.filter(e => e.source === "school") : monthEvts.filter(e => e.type === s.key);
+                  const info = evs.map(e => `${e.date} : ${e.title}`).join("\n");
+                  alert(`本月【${s.label}】包含以下活动：\n\n${info}\n\n👉 请在日历上点击对应的日期，然后在侧边栏中删除它。`);
+                }}>
                 <div className="ov-stat-icon">{s.icon}</div>
                 <div className="ov-stat-count">{cnt}</div>
                 <div className="ov-stat-label">{s.label}</div>
