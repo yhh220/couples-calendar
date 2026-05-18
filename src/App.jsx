@@ -622,7 +622,6 @@ function CommentsSection({ eventId }) {
   };
 
   const deleteComment = async (cId) => {
-    if (!window.confirm("确定删除这条评论吗？")) return;
     try { await deleteDoc(doc(db, "events", eventId, "comments", cId)); }
     catch (e) { alert("删除失败: " + e.message); }
   };
@@ -636,24 +635,24 @@ function CommentsSection({ eventId }) {
         const color = c.ownerEmail === HIM_EMAIL ? "var(--him)" : "var(--her)";
         return (
           <div key={c.id} className={`comment ${c.ownerEmail === HIM_EMAIL ? "him" : "her"}`}>
-            <span className="comment-avatar" style={{ color: color, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", background: color }}>
+            <span className="comment-avatar" style={{ color: color, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", background: color, width: 24, height: 24, borderRadius: "50%" }}>
               {uInfo?.photoUrl ? <img src={uInfo.photoUrl} alt="avatar" style={{width:"100%",height:"100%",objectFit:"cover"}} />
               : <span style={{fontSize:12,color:"white"}}>{uInfo?.avatarEmoji || (c.ownerEmail === HIM_EMAIL ? "🖤" : "🩷")}</span>}
             </span>
             <div className="comment-text-box" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
               {editingId === c.id ? (
                 <div style={{ display: "flex", gap: 6, width: "100%" }}>
-                  <input className="f-input" style={{ flex: 1, padding: "4px 8px", fontSize: 12, minHeight: 28 }} autoFocus value={editText} onChange={e => setEditText(e.target.value)} onKeyDown={e => e.key === "Enter" && saveEdit(c)} />
-                  <button className="icon-btn" style={{width:28,height:28}} onClick={() => saveEdit(c)} disabled={loading}><Check size={12} /></button>
-                  <button className="icon-btn" style={{width:28,height:28}} onClick={() => setEditingId(null)}><X size={12} /></button>
+                  <input className="f-input" style={{ flex: 1, padding: "4px 8px", fontSize: 13, minHeight: 32 }} autoFocus value={editText} onChange={e => setEditText(e.target.value)} onKeyDown={e => e.key === "Enter" && saveEdit(c)} />
+                  <button className="icon-btn" style={{width:32,height:32}} onClick={() => saveEdit(c)} disabled={loading}><Check size={14} /></button>
+                  <button className="icon-btn" style={{width:32,height:32}} onClick={() => setEditingId(null)}><X size={14} /></button>
                 </div>
               ) : (
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                   <span className="comment-text">{c.text}</span>
-                  {isOwner && (
-                    <div style={{ display: "flex", gap: 4, opacity: 0.6 }}>
-                      <button style={{background:"none",border:"none",padding:2,cursor:"pointer",color:"var(--muted)"}} onClick={() => { setEditingId(c.id); setEditText(c.text); }}><Edit2 size={10} /></button>
-                      <button style={{background:"none",border:"none",padding:2,cursor:"pointer",color:"#dd4f68"}} onClick={() => deleteComment(c.id)}><Trash2 size={10} /></button>
+                  {(isOwner || c.calendar === "shared") && (
+                    <div style={{ display: "flex", gap: 2, opacity: 0.8 }}>
+                      <button style={{background:"none",border:"none",padding:6,cursor:"pointer",color:"var(--muted)",display:"flex"}} onClick={() => { setEditingId(c.id); setEditText(c.text); }}><Edit2 size={13} /></button>
+                      <button style={{background:"none",border:"none",padding:6,cursor:"pointer",color:"#dd4f68",display:"flex"}} onClick={() => deleteComment(c.id)}><Trash2 size={13} /></button>
                     </div>
                   )}
                 </div>
