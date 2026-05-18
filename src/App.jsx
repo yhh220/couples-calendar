@@ -2525,7 +2525,7 @@ function SchoolCalendarModal({ open, onClose, events, onAdd, onUpdate, onDelete 
               )}
               {events.map(e => (
                 <div className="school-row" key={e.id}>
-                  <div style={{minWidth:0}}>
+                  <div style={{flex: 1, minWidth:0}}>
                     <div className="school-row-title">{e.title}</div>
                     <div className="ev-meta">{e.date}{e.endDate ? ` – ${e.endDate}` : ""}</div>
                   </div>
